@@ -5,11 +5,13 @@
 <article class="notice no-print">{{.Notice}}</article>
 {{end}}
 
-<div class="no-print" style="display:flex; gap:1rem; margin-bottom:1rem; flex-wrap:wrap; align-items:center;">
+<div class="no-print invoice-toolbar">
   <a href="/invoices" role="button" class="secondary">Back to Invoices</a>
   <a href="/invoices/{{.Invoice.ID}}/pdf" role="button" class="secondary">Download PDF</a>
-  <a href="#" role="button" class="secondary" hx-post="/invoices/{{.Invoice.ID}}/send">Send to Customer</a>
-  <a role="button" class="secondary" onclick="window.print()">Print</a>
+  <form method="post" action="/invoices/{{.Invoice.ID}}/send" class="inline-form">
+    <button type="submit" class="secondary">Send to Customer</button>
+  </form>
+  <a role="button" class="secondary" href="#" onclick="window.print(); return false;">Print</a>
 </div>
 
 {{template "invoice_preview_fragment" .Invoice}}

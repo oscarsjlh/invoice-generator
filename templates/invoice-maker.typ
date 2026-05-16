@@ -39,7 +39,7 @@
   total-time: "Total Hours",
   no-vat: "Not VAT Registered",
   total: "Total",
-  due-text: val => [Payment due by *#val* to:],
+  due-text: val => [Payment due by *#val*],
   bank: "Bank",
   account-name: "Account Name",
   sort-code: "Sort Code",
@@ -60,7 +60,7 @@
     lines.push(entity.address.country)
   }
 
-  lines.join("\\")
+  lines.map(line => [#line]).join([#linebreak()])
 }
 
 #let invoice(
@@ -84,7 +84,7 @@
   target: "pdf",
   doc,
 ) = {
-  styling.font = styling.at("font", default: "Libertinus Sans")
+  styling.font = styling.at("font", default: "Noto Sans")
   styling.font-size = styling.at("font-size", default: 11pt)
   styling.margin = styling.at("margin", default: (
     top: 20mm,
@@ -106,7 +106,7 @@
   set page(margin: styling.margin)
   set par(justify: false)
   set text(
-    font: if styling.font == none { "Libertinus Sans" } else { styling.font },
+    font: if styling.font == none { "Noto Sans" } else { styling.font },
     size: styling.font-size,
   )
   set table(stroke: none)

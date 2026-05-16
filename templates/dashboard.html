@@ -62,16 +62,16 @@
         {{range .Summary}}
         <tr>
           <td>{{.Category}}</td>
-          <td>{{money .TotalHours}}</td>
-          <td>GBP {{money .TotalAmount}}</td>
+          <td>{{numfmt .TotalHours}}</td>
+          <td>GBP {{numfmt .TotalAmount}}</td>
         </tr>
         {{end}}
       </tbody>
       <tfoot>
         <tr>
           <th>Total</th>
-          <th>{{money $.TotalHours}}</th>
-          <th>GBP {{money $.TotalAmount}}</th>
+          <th>{{numfmt $.TotalHours}}</th>
+          <th>GBP {{numfmt $.TotalAmount}}</th>
         </tr>
       </tfoot>
     </table>
@@ -100,7 +100,7 @@
           <td><a href="/invoices/{{.ID}}">{{.InvoiceNumber}}</a></td>
           <td>{{.Month}}</td>
           <td>{{.Category}}</td>
-          <td>GBP {{money .Total}}</td>
+          <td>GBP {{numfmt .Total}}</td>
         </tr>
         {{end}}
       </tbody>

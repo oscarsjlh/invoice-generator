@@ -1,0 +1,30 @@
+{{define "entry_edit_row"}}
+<tr>
+  <td colspan="5">
+    <form hx-post="/entries/{{.ID}}" hx-target="#entries-table" hx-swap="outerHTML" style="margin: 0;">
+      <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 0.5rem; align-items: end;">
+        <label style="margin: 0;">
+          Date
+          <input type="date" name="date" value="{{.Date}}" required>
+        </label>
+        <label style="margin: 0;">
+          Category
+          <input type="text" name="category" value="{{.Category}}" required>
+        </label>
+        <label style="margin: 0;">
+          Hours
+          <input type="number" name="hours" value="{{money .Hours}}" min="0" step="0.25" required>
+        </label>
+        <label style="margin: 0;">
+          Notes
+          <input type="text" name="notes" value="{{.Notes}}">
+        </label>
+        <div style="display: flex; gap: 0.5rem; align-items: end;">
+          <button type="submit">Save</button>
+          <button type="button" class="secondary" hx-get="/entries/table" hx-target="#entries-table" hx-swap="outerHTML">Cancel</button>
+        </div>
+      </div>
+    </form>
+  </td>
+</tr>
+{{end}}

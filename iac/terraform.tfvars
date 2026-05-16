@@ -1,0 +1,5 @@
+state_bucket_name = "oscar-tf-state"
+project_name      = "invoices"
+profile           = "oscar-lab"
+region            = "eu-west-2"
+domain_name       = "oscarcorner.com"

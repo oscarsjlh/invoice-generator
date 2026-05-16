@@ -1,17 +1,9 @@
 services:
   invoice-app:
+    image: registry.oscarcorner.com/invoices
     build: .
     ports:
       - "8080:8080"
-    environment:
-      ADDRESS: ":8080"
-      DATABASE_PATH: "/app/data/invoices.db"
-      MIGRATIONS_DIR: "/app/migrations"
-      SMTP_HOST: ""
-      SMTP_PORT: "587"
-      SMTP_USER: ""
-      SMTP_PASS: ""
-      SMTP_FROM: ""
     volumes:
       - ./data:/app/data
     restart: unless-stopped

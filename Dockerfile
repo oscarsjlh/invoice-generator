@@ -17,6 +17,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/invoice-app ./cmd/ser
 
 FROM alpine:3.22 AS runtime
 
+RUN apk add --no-cache wget font-noto
+
 RUN wget -O - 'https://github.com/typst/typst/releases/download/v0.13.1/typst-x86_64-unknown-linux-musl.tar.xz' 2>/dev/null \
     | tar xJ -C /usr/local/bin --strip-components=1 typst-x86_64-unknown-linux-musl/typst \
     && chmod +x /usr/local/bin/typst
@@ -35,6 +37,7 @@ COPY --from=runtime /etc/passwd /etc/passwd
 COPY --from=runtime /etc/group /etc/group
 COPY --from=runtime --chown=1000:1000 /tmp /tmp
 COPY --from=runtime /usr/local/bin/typst /usr/local/bin/typst
+COPY --from=runtime /usr/share/fonts /usr/share/fonts
 COPY --from=runtime --chown=1000:1000 /app /app
 
 ENV ADDRESS=:8080 \

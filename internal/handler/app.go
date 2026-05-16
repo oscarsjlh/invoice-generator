@@ -73,7 +73,10 @@ func (a *App) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", a.dashboard)
 	mux.HandleFunc("GET /entries", a.entriesPage)
+	mux.HandleFunc("GET /entries/table", a.entriesTable)
 	mux.HandleFunc("POST /entries", a.createEntry)
+	mux.HandleFunc("GET /entries/{id}/edit", a.editEntryForm)
+	mux.HandleFunc("POST /entries/{id}", a.updateEntry)
 	mux.HandleFunc("POST /entries/{id}/delete", a.deleteEntry)
 	mux.HandleFunc("GET /rates", a.ratesPage)
 	mux.HandleFunc("GET /rates/table", a.ratesTable)
@@ -99,6 +102,7 @@ func (a *App) renderPage(w http.ResponseWriter, status int, page string, data an
 	files = append(files, page)
 	tmpl, err := template.New("layout.html").Funcs(template.FuncMap{
 		"money":     money,
+		"numfmt":    numfmt,
 		"dateLabel": dateLabel,
 		"selected":  selected,
 		"monthName": monthName,
@@ -118,6 +122,7 @@ func (a *App) renderPage(w http.ResponseWriter, status int, page string, data an
 func (a *App) renderPartial(w http.ResponseWriter, status int, name string, data any, files ...string) {
 	tmpl, err := template.New(name).Funcs(template.FuncMap{
 		"money":     money,
+		"numfmt":    numfmt,
 		"dateLabel": dateLabel,
 		"selected":  selected,
 		"monthName": monthName,
@@ -204,6 +209,34 @@ func isHTMX(r *http.Request) bool {
 
 func money(value float64) string {
 	return fmt.Sprintf("%.2f", value)
+}
+
+func numfmt(value float64) string {
+	intPart := int64(value)
+	decPart := value - float64(intPart)
+	result := formatWithCommas(intPart)
+	if decPart < 0 {
+		decPart = -decPart
+	}
+	return result + fmt.Sprintf("%.2f", decPart)[1:]
+}
+
+func formatWithCommas(n int64) string {
+	if n < 0 {
+		return "-" + formatWithCommas(-n)
+	}
+	s := strconv.FormatInt(n, 10)
+	if len(s) <= 3 {
+		return s
+	}
+	var b strings.Builder
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(c)
+	}
+	return b.String()
 }
 
 func dateLabel(value string) string {

@@ -20,7 +20,10 @@
           <td>{{money .Hours}}</td>
           <td>{{if .Notes}}{{.Notes}}{{else}}<span class="muted">-</span>{{end}}</td>
           <td class="no-print">
-            <button type="button" class="secondary" hx-post="/entries/{{.ID}}/delete" hx-target="#entries-table" hx-swap="outerHTML" hx-confirm="Delete this entry?">Delete</button>
+            <div style="display: flex; gap: 0.25rem;">
+              <button type="button" class="secondary" hx-get="/entries/{{.ID}}/edit" hx-target="closest tr" hx-swap="outerHTML">Edit</button>
+              <button type="button" class="secondary" hx-post="/entries/{{.ID}}/delete" hx-target="#entries-table" hx-swap="outerHTML" hx-confirm="Delete this entry?">Delete</button>
+            </div>
           </td>
         </tr>
         {{end}}

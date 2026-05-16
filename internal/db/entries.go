@@ -41,6 +41,28 @@ func (s *Store) CreateEntry(date, category string, hours float64, notes string) 
 	return nil
 }
 
+func (s *Store) GetEntry(id int64) (Entry, error) {
+	var entry Entry
+	err := s.db.QueryRow(
+		`SELECT id, date, category, hours, COALESCE(notes, '') FROM entries WHERE id = ?`, id,
+	).Scan(&entry.ID, &entry.Date, &entry.Category, &entry.Hours, &entry.Notes)
+	if err != nil {
+		return Entry{}, fmt.Errorf("get entry: %w", err)
+	}
+	return entry, nil
+}
+
+func (s *Store) UpdateEntry(id int64, date, category string, hours float64, notes string) error {
+	_, err := s.db.Exec(
+		`UPDATE entries SET date = ?, category = ?, hours = ?, notes = ? WHERE id = ?`,
+		date, category, hours, notes, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update entry: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) DeleteEntry(id int64) error {
 	_, err := s.db.Exec(`DELETE FROM entries WHERE id = ?`, id)
 	if err != nil {
