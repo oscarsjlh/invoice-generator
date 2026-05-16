@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"invoice-app/internal/config"
 	"invoice-app/internal/db"
+	"invoice-app/static"
+	"invoice-app/templates"
 )
 
 type App struct {
@@ -87,21 +88,21 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("POST /invoices/{id}/send", a.sendInvoice)
 	mux.HandleFunc("GET /settings", a.settingsPage)
 	mux.HandleFunc("POST /settings", a.saveSettings)
+	mux.HandleFunc("GET /static/", func(w http.ResponseWriter, r *http.Request) {
+		http.StripPrefix("/static/", http.FileServerFS(static.FS)).ServeHTTP(w, r)
+	})
 	return a.recoverMiddleware(a.loggingMiddleware(mux))
 }
 
 func (a *App) renderPage(w http.ResponseWriter, status int, page string, data any, extra ...string) {
-	files := []string{filepath.Join(a.cfg.TemplatesDir, "layout.html")}
-	for _, file := range extra {
-		files = append(files, filepath.Join(a.cfg.TemplatesDir, file))
-	}
-	files = append(files, filepath.Join(a.cfg.TemplatesDir, page))
+	files := append([]string{"layout.html"}, extra...)
+	files = append(files, page)
 	tmpl, err := template.New("layout.html").Funcs(template.FuncMap{
 		"money":     money,
 		"dateLabel": dateLabel,
 		"selected":  selected,
 		"monthName": monthName,
-	}).ParseFiles(files...)
+	}).ParseFS(templates.FS, files...)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("parse template: %v", err), http.StatusInternalServerError)
 		return
@@ -115,16 +116,12 @@ func (a *App) renderPage(w http.ResponseWriter, status int, page string, data an
 }
 
 func (a *App) renderPartial(w http.ResponseWriter, status int, name string, data any, files ...string) {
-	paths := []string{}
-	for _, file := range files {
-		paths = append(paths, filepath.Join(a.cfg.TemplatesDir, file))
-	}
 	tmpl, err := template.New(name).Funcs(template.FuncMap{
 		"money":     money,
 		"dateLabel": dateLabel,
 		"selected":  selected,
 		"monthName": monthName,
-	}).ParseFiles(paths...)
+	}).ParseFS(templates.FS, files...)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("parse partial: %v", err), http.StatusInternalServerError)
 		return

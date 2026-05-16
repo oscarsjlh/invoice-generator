@@ -8,17 +8,12 @@ import (
 	"strings"
 )
 
-func GenerateInvoicePDF(workDir, templatePath string, typContent string) ([]byte, error) {
+func GenerateInvoicePDF(workDir string, templateBytes []byte, typContent string) ([]byte, error) {
 	if err := os.MkdirAll(workDir, 0755); err != nil {
 		return nil, fmt.Errorf("create work dir: %w", err)
 	}
 	typFile := filepath.Join(workDir, "invoice.typ")
 
-	// Copy template to work dir so typst can find it
-	templateBytes, err := os.ReadFile(templatePath)
-	if err != nil {
-		return nil, fmt.Errorf("read typst template: %w", err)
-	}
 	if err := os.WriteFile(filepath.Join(workDir, "invoice-maker.typ"), templateBytes, 0644); err != nil {
 		return nil, fmt.Errorf("write typst template: %w", err)
 	}
@@ -70,12 +65,13 @@ func findTypst() string {
 func FormatInvoiceTyp(invoice InvoiceData) string {
 	items := ""
 	for _, item := range invoice.Items {
+		hours := float64(item.DurMin) / 60
 		items += fmt.Sprintf(`    (
-      description: "%s",
-      dur-min: %d,
-      hourly-rate: %.2f,
-    ),
-`, item.Description, item.DurMin, item.HourlyRate)
+	      description: "%s",
+	      dur-min: %d,
+	      hourly-rate: %.2f,
+	    ),
+`, escape(fmt.Sprintf("%s (%.2fh @ £%.2f/hr)", item.Description, hours, item.HourlyRate)), item.DurMin, item.HourlyRate)
 	}
 
 	return fmt.Sprintf(`#import "invoice-maker.typ": *

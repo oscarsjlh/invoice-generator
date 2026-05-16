@@ -5,7 +5,6 @@ import "os"
 type Config struct {
 	Address       string
 	DatabasePath  string
-	TemplatesDir  string
 	MigrationsDir string
 	TypstBin      string
 	SMTPHost      string
@@ -19,7 +18,6 @@ func Load() Config {
 	return Config{
 		Address:       getenv("ADDRESS", ":8080"),
 		DatabasePath:  getenv("DATABASE_PATH", "data/invoices.db"),
-		TemplatesDir:  getenv("TEMPLATES_DIR", "templates"),
 		MigrationsDir: getenv("MIGRATIONS_DIR", "migrations"),
 		TypstBin:      getenv("TYPST_BIN", ""),
 		SMTPHost:      getenv("SMTP_HOST", ""),

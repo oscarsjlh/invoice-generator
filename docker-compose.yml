@@ -6,7 +6,6 @@ services:
     environment:
       ADDRESS: ":8080"
       DATABASE_PATH: "/app/data/invoices.db"
-      TEMPLATES_DIR: "/app/templates"
       MIGRATIONS_DIR: "/app/migrations"
       SMTP_HOST: ""
       SMTP_PORT: "587"
@@ -15,5 +14,4 @@ services:
       SMTP_FROM: ""
     volumes:
       - ./data:/app/data
-      - ./templates:/app/templates
     restart: unless-stopped

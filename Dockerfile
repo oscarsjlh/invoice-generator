@@ -1,34 +1,47 @@
-FROM golang:1.26 AS build
+FROM node:22-alpine AS deps
+WORKDIR /deps
+COPY package.json pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile
+
+FROM golang:1.26-alpine AS build
 
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+COPY --from=deps /deps/node_modules ./node_modules
+RUN cp node_modules/@picocss/pico/css/pico.min.css static/ && \
+    cp node_modules/htmx.org/dist/htmx.min.js static/
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/invoice-app ./cmd/server
 
-FROM debian:bookworm-slim
+FROM alpine:3.22 AS runtime
 
-WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
-    && curl -fsSL https://github.com/typst/typst/releases/download/v0.13.1/typst-x86_64-unknown-linux-musl.tar.xz \
+RUN wget -O - 'https://github.com/typst/typst/releases/download/v0.13.1/typst-x86_64-unknown-linux-musl.tar.xz' 2>/dev/null \
     | tar xJ -C /usr/local/bin --strip-components=1 typst-x86_64-unknown-linux-musl/typst \
-    && chmod +x /usr/local/bin/typst \
-    && apt-get remove -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+    && chmod +x /usr/local/bin/typst
 
-RUN useradd --system --create-home app
-COPY --from=build /out/invoice-app /app/invoice-app
+RUN adduser -D -H -h /app -u 1000 app \
+    && mkdir -p /app \
+    && chown app:app /app
+
+COPY --from=build /out/invoice-app /app/
 COPY migrations /app/migrations
-COPY templates /app/templates
+
+FROM scratch
+
+COPY --from=runtime /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=runtime /etc/passwd /etc/passwd
+COPY --from=runtime /etc/group /etc/group
+COPY --from=runtime --chown=1000:1000 /tmp /tmp
+COPY --from=runtime /usr/local/bin/typst /usr/local/bin/typst
+COPY --from=runtime --chown=1000:1000 /app /app
 
 ENV ADDRESS=:8080 \
     DATABASE_PATH=/app/data/invoices.db \
-    TEMPLATES_DIR=/app/templates \
-    MIGRATIONS_DIR=/app/migrations
+    MIGRATIONS_DIR=/app/migrations \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
-RUN mkdir -p /app/data && chown -R app:app /app
-USER app
+USER 1000:1000
 EXPOSE 8080
 CMD ["/app/invoice-app"]

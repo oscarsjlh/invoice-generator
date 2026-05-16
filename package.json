@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "dependencies": {
+    "@picocss/pico": "^2.0.0",
+    "htmx.org": "^2.0.4"
+  }
+}

@@ -12,6 +12,7 @@ import (
 	"invoice-app/internal/db"
 	"invoice-app/internal/email"
 	"invoice-app/internal/pdf"
+	"invoice-app/templates"
 )
 
 func (a *App) invoicesPage(w http.ResponseWriter, r *http.Request) {
@@ -202,8 +203,10 @@ func (a *App) generateInvoicePDF(invoice db.Invoice) ([]byte, error) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	templateDir := a.cfg.TemplatesDir
-	templatePath := templateDir + "/invoice-maker.typ"
+	templateBytes, err := templates.FS.ReadFile("invoice-maker.typ")
+	if err != nil {
+		return nil, fmt.Errorf("read typst template: %w", err)
+	}
 
 	// Parse business address into components
 	street, city, postalCode := parseAddress(invoice.BusinessAddress)
@@ -246,14 +249,14 @@ func (a *App) generateInvoicePDF(invoice db.Invoice) ([]byte, error) {
 	for _, line := range invoice.Lines {
 		hoursMinutes := int(math.Round(line.Hours * 60))
 		data.Items = append(data.Items, pdf.ItemData{
-			Description: fmt.Sprintf("%s (%.2fh @ £%.2f/hr)", line.Category, line.Hours, line.Rate),
+			Description: line.Category,
 			DurMin:      hoursMinutes,
 			HourlyRate:  line.Rate,
 		})
 	}
 
 	typContent := pdf.FormatInvoiceTyp(data)
-	return pdf.GenerateInvoicePDF(tmpDir, templatePath, typContent)
+	return pdf.GenerateInvoicePDF(tmpDir, templateBytes, typContent)
 }
 
 func parseAddress(address string) (street, city, postalCode string) {
