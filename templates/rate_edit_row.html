@@ -1,0 +1,30 @@
+{{define "rate_edit_row"}}
+<tr>
+  <td colspan="5">
+    <form hx-post="/rates/{{.ID}}" hx-target="#rates-table" hx-swap="outerHTML" style="margin: 0;">
+      <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 0.5rem; align-items: end;">
+        <label style="margin: 0;">
+          Category
+          <input type="text" name="category" value="{{.Category}}" required>
+        </label>
+        <label style="margin: 0;">
+          Start Date
+          <input type="date" name="start_date" value="{{.StartDate}}" required>
+        </label>
+        <label style="margin: 0;">
+          End Date
+          <input type="date" name="end_date" value="{{.EndDate}}" required>
+        </label>
+        <label style="margin: 0;">
+          Rate
+          <input type="number" name="rate" value="{{money .Rate}}" min="0.01" step="0.01" required>
+        </label>
+        <div style="display: flex; gap: 0.5rem; align-items: end;">
+          <button type="submit">Save</button>
+          <button type="button" class="secondary" hx-get="/rates/table" hx-target="#rates-table" hx-swap="outerHTML">Cancel</button>
+        </div>
+      </div>
+    </form>
+  </td>
+</tr>
+{{end}}

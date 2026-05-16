@@ -1,0 +1,48 @@
+{{define "title"}}Rates{{end}}
+
+{{define "content"}}
+<header>
+  <h1>Rates</h1>
+  <p class="muted">Manage effective-date pricing for each category.</p>
+</header>
+
+{{if .Notice}}
+<article class="notice">{{.Notice}}</article>
+{{end}}
+
+<section class="grid-2">
+  <article>
+    <h2>Add Rate</h2>
+    <form method="post" action="/rates">
+      <label>
+        Category
+        <input type="text" name="category" required placeholder="Acro 4">
+      </label>
+      <label>
+        Start Date
+        <input type="date" name="start_date" required>
+      </label>
+      <label>
+        End Date
+        <input type="date" name="end_date" required>
+      </label>
+      <label>
+        Hourly Rate
+        <input type="number" name="rate" required min="0.01" step="0.01" placeholder="95.00">
+      </label>
+      <button type="submit">Save Rate</button>
+    </form>
+  </article>
+
+  <article>
+    <h2>Notes</h2>
+    <p>Rates are matched by category and the entry date falling between the configured start and end dates.</p>
+    <p class="muted">Keep ranges non-overlapping where possible to make billing easier to reason about.</p>
+  </article>
+</section>
+
+<section>
+  <h2>All Rates</h2>
+  {{template "rates_table" .}}
+</section>
+{{end}}

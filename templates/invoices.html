@@ -1,0 +1,53 @@
+{{define "title"}}Invoices{{end}}
+
+{{define "content"}}
+<header>
+  <h1>Invoices</h1>
+  <p class="muted">Generate an invoice snapshot from your current entries, rates, and business settings.</p>
+</header>
+
+{{if .Notice}}
+<article class="notice">{{.Notice}}</article>
+{{end}}
+
+<section class="grid-2">
+  <article>
+    <h2>Generate Invoice</h2>
+    <form method="post" action="/invoices/generate">
+      <label>
+        Month
+        <input type="month" name="month" value="{{.DefaultMonth}}" required>
+      </label>
+      <label>
+        Category
+        <select name="category">
+          <option value="All" {{selected .SelectedCategory "All"}}>All</option>
+          {{range .Categories}}
+          <option value="{{.}}">{{.}}</option>
+          {{end}}
+        </select>
+      </label>
+      <label>
+        Invoice Date
+        <input type="date" name="invoice_date" value="{{.DefaultInvoiceDate}}" required>
+      </label>
+      <label>
+        Due Days
+        <input type="number" name="due_days" value="{{.DefaultDueDays}}" min="1" step="1" required>
+      </label>
+      <button type="submit">Generate Invoice</button>
+    </form>
+  </article>
+
+  <article>
+    <h2>Print to PDF</h2>
+    <p>Generated invoices open as printable HTML pages. Use your browser's print dialog to save them as PDF.</p>
+    <p class="muted">The invoice record stores a snapshot of the current settings and line items, so old invoices remain stable even if rates change later.</p>
+  </article>
+</section>
+
+<section>
+  <h2>Generated Invoices</h2>
+  {{template "invoice_list" .}}
+</section>
+{{end}}

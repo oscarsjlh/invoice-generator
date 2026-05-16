@@ -1,0 +1,18 @@
+{{define "title"}}Invoice {{.Invoice.InvoiceNumber}}{{end}}
+
+{{define "content"}}
+{{if .Notice}}
+<article class="notice no-print">{{.Notice}}</article>
+{{end}}
+
+<div class="no-print" style="display:flex; gap:1rem; margin-bottom:1rem; flex-wrap:wrap;">
+  <a href="/invoices" role="button" class="secondary">Back to Invoices</a>
+  <a href="/invoices/{{.Invoice.ID}}/pdf" role="button" class="secondary">Download PDF</a>
+  <form method="post" action="/invoices/{{.Invoice.ID}}/send" style="display:inline;">
+    <button type="submit" class="secondary">Send to Customer</button>
+  </form>
+  <button onclick="window.print()">Print</button>
+</div>
+
+{{template "invoice_preview_fragment" .Invoice}}
+{{end}}

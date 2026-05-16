@@ -1,0 +1,32 @@
+{{define "invoice_list"}}
+{{if .Invoices}}
+<figure>
+  <table>
+    <thead>
+      <tr>
+        <th>Number</th>
+        <th>Month</th>
+        <th>Category</th>
+        <th>Invoice Date</th>
+        <th>Due Date</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Invoices}}
+      <tr>
+        <td><a href="/invoices/{{.ID}}">{{.InvoiceNumber}}</a></td>
+        <td>{{.Month}}</td>
+        <td>{{.Category}}</td>
+        <td>{{dateLabel .InvoiceDate}}</td>
+        <td>{{dateLabel .DueDate}}</td>
+        <td>GBP {{money .Total}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</figure>
+{{else}}
+<p class="muted">No invoices generated yet.</p>
+{{end}}
+{{end}}

@@ -1,0 +1,87 @@
+{{define "invoice_preview_fragment"}}
+<article class="invoice-sheet" data-theme="light">
+  <header style="display:flex; justify-content:space-between; gap:2rem; align-items:flex-start;">
+    <div>
+      <h1 style="margin-bottom:0.25rem;">Invoice</h1>
+      <p class="muted mono">{{.InvoiceNumber}}</p>
+    </div>
+    <div style="text-align:right;">
+      <strong>{{.BusinessName}}</strong>
+      <div class="preline muted">{{.BusinessAddress}}</div>
+    </div>
+  </header>
+
+  <section class="invoice-meta" style="margin-top:2rem; margin-bottom:2rem;">
+    <div>
+      <small class="muted">Month</small>
+      <div>{{.Month}}</div>
+    </div>
+    <div>
+      <small class="muted">Category</small>
+      <div>{{.Category}}</div>
+    </div>
+    <div>
+      <small class="muted">Invoice Date</small>
+      <div>{{dateLabel .InvoiceDate}}</div>
+    </div>
+    <div>
+      <small class="muted">Due Date</small>
+      <div>{{dateLabel .DueDate}}</div>
+    </div>
+  </section>
+
+  <figure>
+    <table>
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Hours</th>
+          <th>Rate</th>
+          <th>Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Lines}}
+        <tr>
+          <td>{{.Category}}</td>
+          <td>{{money .Hours}}</td>
+          <td>GBP {{money .Rate}}</td>
+          <td>GBP {{money .Amount}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th colspan="3" style="text-align:right;">Total</th>
+          <th>GBP {{money .Total}}</th>
+        </tr>
+      </tfoot>
+    </table>
+  </figure>
+
+  <section style="margin-top:2rem;">
+    <h3>Payment Details</h3>
+    <div class="bank-details">
+      <div>
+        <small class="muted">Bank</small>
+        <div>{{.BankName}}</div>
+      </div>
+      <div>
+        <small class="muted">Account Name</small>
+        <div>{{.AccountName}}</div>
+      </div>
+      <div>
+        <small class="muted">Account Number</small>
+        <div class="mono">{{.AccountNumber}}</div>
+      </div>
+      <div>
+        <small class="muted">Sort Code</small>
+        <div class="mono">{{.SortCode}}</div>
+      </div>
+    </div>
+    {{if .PaymentTerms}}
+    <p class="muted" style="margin-top:1rem;">{{.PaymentTerms}}</p>
+    {{end}}
+  </section>
+</article>
+{{end}}

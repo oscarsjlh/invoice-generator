@@ -1,0 +1,82 @@
+{{define "title"}}Settings{{end}}
+
+{{define "content"}}
+<header>
+  <h1>Settings</h1>
+  <p class="muted">Business details captured here are snapshotted into each generated invoice.</p>
+</header>
+
+{{if .Notice}}
+<article class="notice">{{.Notice}}</article>
+{{end}}
+
+<article>
+  <form method="post" action="/settings">
+    <h2>Business Details</h2>
+    <div class="grid-2">
+      <label>
+        Business Name
+        <input type="text" name="business_name" value="{{.Settings.BusinessName}}">
+      </label>
+      <label>
+        Bank Name
+        <input type="text" name="bank_name" value="{{.Settings.BankName}}">
+      </label>
+      <label>
+        Account Name
+        <input type="text" name="account_name" value="{{.Settings.AccountName}}">
+      </label>
+      <label>
+        Account Number
+        <input type="text" name="account_number" value="{{.Settings.AccountNumber}}">
+      </label>
+      <label>
+        Sort Code
+        <input type="text" name="sort_code" value="{{.Settings.SortCode}}">
+      </label>
+      <label>
+        Default Due Days
+        <input type="number" name="default_due_days" min="1" step="1" value="{{.Settings.DefaultDueDays}}">
+      </label>
+    </div>
+    <label>
+      Business Address
+      <textarea name="business_address" rows="5">{{.Settings.BusinessAddress}}</textarea>
+    </label>
+    <label>
+      Payment Terms
+      <textarea name="payment_terms" rows="3">{{.Settings.PaymentTerms}}</textarea>
+    </label>
+
+    <h2 style="margin-top:2rem;">Customer Details</h2>
+    <div class="grid-2">
+      <label>
+        Customer Name / Company
+        <input type="text" name="customer_name" value="{{.Settings.CustomerName}}">
+      </label>
+      <label>
+        Customer Title (optional)
+        <input type="text" name="customer_title" value="{{.Settings.CustomerTitle}}">
+      </label>
+      <label>
+        Customer Email
+        <input type="email" name="customer_email" value="{{.Settings.CustomerEmail}}">
+      </label>
+      <label>
+        Customer City
+        <input type="text" name="customer_city" value="{{.Settings.CustomerCity}}">
+      </label>
+      <label>
+        Customer Postal Code
+        <input type="text" name="customer_postal_code" value="{{.Settings.CustomerPostalCode}}">
+      </label>
+    </div>
+    <label>
+      Customer Address
+      <textarea name="customer_address" rows="3">{{.Settings.CustomerAddress}}</textarea>
+    </label>
+
+    <button type="submit">Save Settings</button>
+  </form>
+</article>
+{{end}}

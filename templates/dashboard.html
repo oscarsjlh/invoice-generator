@@ -1,0 +1,113 @@
+{{define "title"}}Dashboard{{end}}
+
+{{define "content"}}
+<header>
+  <h1>Dashboard</h1>
+  <p class="muted">Summary of hours and earnings by category.</p>
+</header>
+
+{{if .Notice}}
+<article class="notice">{{.Notice}}</article>
+{{end}}
+
+<form method="GET" action="/" style="margin-bottom: 1.5rem;">
+  <fieldset>
+    <legend>Filters</legend>
+    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0.75rem;">
+      <label>
+        Year
+        <select name="year" onchange="this.form.submit()">
+          <option value="">All years</option>
+          {{range .Years}}
+          <option value="{{.}}" {{selected $.SelectedYear .}}>{{.}}</option>
+          {{end}}
+        </select>
+      </label>
+      <label>
+        Month
+        <select name="month" onchange="this.form.submit()">
+          <option value="">All months</option>
+          {{range .Months}}
+          <option value="{{.}}" {{selected $.SelectedMonth .}}>{{monthName .}}</option>
+          {{end}}
+        </select>
+      </label>
+    </div>
+  </fieldset>
+</form>
+
+<section>
+  <h2>
+    {{if .SelectedYear}}
+      {{.SelectedYear}}
+      {{if .SelectedMonth}}
+        &mdash; {{monthName .SelectedMonth}}
+      {{end}}
+    {{else}}
+      All time
+    {{end}}
+    Summary
+  </h2>
+  {{if .Summary}}
+  <figure>
+    <table>
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Hours</th>
+          <th>Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Summary}}
+        <tr>
+          <td>{{.Category}}</td>
+          <td>{{money .TotalHours}}</td>
+          <td>GBP {{money .TotalAmount}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th>Total</th>
+          <th>{{money $.TotalHours}}</th>
+          <th>GBP {{money $.TotalAmount}}</th>
+        </tr>
+      </tfoot>
+    </table>
+  </figure>
+  {{else}}
+  <p class="muted">No data for this period. Add entries and rates first.</p>
+  {{end}}
+</section>
+
+<section>
+  <h2>Recent Invoices</h2>
+  {{if .RecentInvoices}}
+  <figure>
+    <table>
+      <thead>
+        <tr>
+          <th>Number</th>
+          <th>Month</th>
+          <th>Category</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .RecentInvoices}}
+        <tr>
+          <td><a href="/invoices/{{.ID}}">{{.InvoiceNumber}}</a></td>
+          <td>{{.Month}}</td>
+          <td>{{.Category}}</td>
+          <td>GBP {{money .Total}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </figure>
+  {{else}}
+  <p class="muted">No invoices generated yet.</p>
+  {{end}}
+</section>
+{{end}}

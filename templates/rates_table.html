@@ -1,0 +1,35 @@
+{{define "rates_table"}}
+<div id="rates-table">
+  {{if .Rates}}
+  <figure>
+    <table>
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>From</th>
+          <th>To</th>
+          <th>Rate</th>
+          <th class="no-print">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Rates}}
+        <tr>
+          <td>{{.Category}}</td>
+          <td>{{dateLabel .StartDate}}</td>
+          <td>{{dateLabel .EndDate}}</td>
+          <td>GBP {{money .Rate}}</td>
+          <td class="no-print">
+            <button type="button" class="secondary" hx-get="/rates/{{.ID}}/edit" hx-target="closest tr" hx-swap="outerHTML">Edit</button>
+            <button type="button" class="secondary" hx-post="/rates/{{.ID}}/delete" hx-target="#rates-table" hx-swap="outerHTML" hx-confirm="Delete this rate?">Delete</button>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </figure>
+  {{else}}
+  <p class="muted">No rates yet.</p>
+  {{end}}
+</div>
+{{end}}
