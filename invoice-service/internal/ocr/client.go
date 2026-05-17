@@ -1,0 +1,145 @@
+package ocr
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+type Client struct {
+	baseURL    string
+	httpClient *http.Client
+}
+
+func NewClient(baseURL string) *Client {
+	return &Client{
+		baseURL: baseURL,
+		httpClient: &http.Client{
+			Timeout: 120 * time.Second,
+		},
+	}
+}
+
+func (c *Client) Extract(images []string, hints ContextHint, rates []RateHint, sessionID int64) (*OCRResponse, error) {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+
+	reqData := OCRRequest{
+		Hints:     hints,
+		Rates:     rates,
+		SessionID: sessionID,
+	}
+	jsonBytes, err := json.Marshal(reqData)
+	if err != nil {
+		return nil, fmt.Errorf("marshal ocr request: %w", err)
+	}
+	if err := writer.WriteField("request", string(jsonBytes)); err != nil {
+		return nil, fmt.Errorf("write request field: %w", err)
+	}
+
+	for _, imgPath := range images {
+		file, err := os.Open(imgPath)
+		if err != nil {
+			return nil, fmt.Errorf("open image %s: %w", imgPath, err)
+		}
+		part, err := writer.CreateFormFile("images", filepath.Base(imgPath))
+		if err != nil {
+			file.Close()
+			return nil, fmt.Errorf("create form file: %w", err)
+		}
+		if _, err := io.Copy(part, file); err != nil {
+			file.Close()
+			return nil, fmt.Errorf("copy image data: %w", err)
+		}
+		file.Close()
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("close writer: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, c.baseURL+"/ocr/extract", &buf)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("ocr service request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read ocr response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ocr service error %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result OCRResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("unmarshal ocr response: %w", err)
+	}
+
+	return &result, nil
+}
+
+type StubClient struct{}
+
+func NewStubClient() *StubClient {
+	return &StubClient{}
+}
+
+func (s *StubClient) Extract(images []string, hints ContextHint, rates []RateHint, sessionID int64) (*OCRResponse, error) {
+	entries := []OCRExtractedEntry{
+		{
+			Date: OCRExtractedField{
+				Raw: "2026-05-15", Normalized: "2026-05-15", Confidence: 0.95, NeedsReview: false,
+			},
+			Category: OCRExtractedField{
+				Raw: "Acro4", Normalized: "Acro4", Candidates: []string{"Acro4", "Acro 4"}, Confidence: 0.88, NeedsReview: false,
+			},
+			Hours: OCRExtractedField{
+				Raw: "7.5", Normalized: "7.5", Confidence: 0.92, NeedsReview: false,
+			},
+			Notes: OCRExtractedField{
+				Raw: "session prep", Normalized: "session prep", Confidence: 0.70, NeedsReview: false,
+			},
+		},
+		{
+			Date: OCRExtractedField{
+				Raw: "2026-05-1\u00a06", Normalized: "2026-05-16", Confidence: 0.78, NeedsReview: false,
+			},
+			Category: OCRExtractedField{
+				Raw: "Rncp+n", Normalized: "", Candidates: []string{"Reception"}, Confidence: 0.45, NeedsReview: true,
+			},
+			Hours: OCRExtractedField{
+				Raw: "3", Normalized: "3.0", Confidence: 0.85, NeedsReview: false,
+			},
+			Notes: OCRExtractedField{
+				Raw: "coyer", Normalized: "cover", Confidence: 0.60, NeedsReview: false,
+			},
+		},
+	}
+
+	return &OCRResponse{
+		SessionID: sessionID,
+		Status:    "success",
+		Entries:   entries,
+		Metadata: OCRMetadata{
+			ModelUsed:        "olmOCR-2-7B-1025-FP8 (stub)",
+			ProcessingTimeMs: 2500,
+			PagesProcessed:   len(images),
+			AvgConfidence:    0.76,
+		},
+	}, nil
+}

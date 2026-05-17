@@ -1,9 +1,22 @@
 services:
   invoice-app:
     image: registry.oscarcorner.com/invoices
-    build: .
+    build:
+      context: ./invoice-service
     ports:
       - "8080:8080"
     volumes:
       - ./data:/app/data
+    environment:
+      OCR_ENABLED: "true"
+      OCR_SERVICE_URL: "http://ocr-service:8000"
+      OCR_UPLOAD_DIR: "/app/data/ocr-uploads"
+    restart: unless-stopped
+
+  ocr-service:
+    image: registry.oscarcorner.com/invoices-ocr
+    build:
+      context: ./ocr-service
+    ports:
+      - "8000:8000"
     restart: unless-stopped

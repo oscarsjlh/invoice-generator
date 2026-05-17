@@ -1,0 +1,80 @@
+{{define "title"}}OCR Import{{end}}
+
+{{define "content"}}
+<header>
+  <h1>Paper Entry Import</h1>
+  <p class="muted">Upload photographed timesheet pages and review the extracted entries before saving.</p>
+</header>
+
+{{if .Notice}}
+<article class="notice">{{.Notice}}</article>
+{{end}}
+
+<section class="grid-2">
+  <article>
+    <h2>Upload Pages</h2>
+    <form method="post" action="/ocr/import" enctype="multipart/form-data">
+      <label>
+        Select images of your handwritten timesheet pages
+        <input type="file" name="images" accept="image/jpeg,image/png" multiple required>
+      </label>
+      <small class="muted">Supported formats: JPEG, PNG. Multiple files can be selected at once.</small>
+      <br><br>
+      <button type="submit">Start Import</button>
+    </form>
+  </article>
+
+  <article>
+    <h2>How It Works</h2>
+    <ol>
+      <li>Upload one or more photos of your handwritten work log</li>
+      <li>The system processes the images using OCR and matches categories against your existing rates</li>
+      <li>Review the extracted entries, correct any mistakes, and confirm which ones to save</li>
+    </ol>
+    <p class="muted">Uploaded images are kept temporarily and deleted when the session is removed.</p>
+  </article>
+</section>
+
+{{if .Sessions}}
+<section>
+  <h2>Recent Import Sessions</h2>
+  <figure>
+    <table>
+      <thead>
+        <tr>
+          <th>Session</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Sessions}}
+        <tr>
+          <td>#{{.ID}}</td>
+          <td>
+            {{if eq .State "uploaded"}}<mark>Waiting</mark>
+            {{else if eq .State "processing"}}<mark class="secondary">Processing</mark>
+            {{else if eq .State "review_ready"}}<ins>Review Ready</ins>
+            {{else if eq .State "confirmed"}}<ins>Confirmed</ins>
+            {{else if eq .State "confirmed_part"}}<ins>Partially Confirmed</ins>
+            {{else if eq .State "failed"}}<mark class="contrast">Failed</mark>
+            {{else}}{{.State}}{{end}}
+          </td>
+          <td>{{.CreatedAt}}</td>
+          <td>
+            <div style="display: flex; gap: 0.25rem;">
+              <a role="button" class="secondary" href="/ocr/import/{{.ID}}">View</a>
+              <form method="post" action="/ocr/import/{{.ID}}/delete" style="display:inline;">
+                <button type="submit" class="secondary">Delete</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </figure>
+</section>
+{{end}}
+{{end}}
