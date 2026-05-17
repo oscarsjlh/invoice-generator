@@ -1,0 +1,147 @@
+{{define "title"}}Review {{.Session.State}}{{end}}
+
+{{define "content"}}
+<header>
+  <h1>Import Session #{{.Session.ID}}</h1>
+  <p class="muted">
+    Status:
+    {{if eq .Session.State "uploaded"}}Waiting for processing
+    {{else if eq .Session.State "processing"}}Processing images...
+    {{else if eq .Session.State "review_ready"}}Review extracted entries below
+    {{else if eq .Session.State "failed"}}<strong>Failed:</strong> {{.Session.ErrorMsg}}
+    {{else if eq .Session.State "confirmed"}}All entries confirmed
+    {{else if eq .Session.State "confirmed_part"}}Some entries confirmed
+    {{else}}{{.Session.State}}{{end}}
+  </p>
+</header>
+
+{{if .Notice}}
+<article class="notice">{{.Notice}}</article>
+{{end}}
+
+{{if .Session.ErrorMsg}}
+<article class="notice" style="border-color: var(--pico-del-color);">
+  <strong>Error:</strong> {{.Session.ErrorMsg}}
+</article>
+{{end}}
+
+{{if eq .Session.State "review_ready" "confirmed_part"}}
+<section>
+  <h2>Extracted Entries</h2>
+  {{if .Drafts}}
+  <form method="post" action="/ocr/import/{{.Session.ID}}/confirm">
+    <figure>
+      <table>
+        <thead>
+          <tr>
+            <th>Confirm</th>
+            <th>Date</th>
+            <th>Category</th>
+            <th>Hours</th>
+            <th>Notes</th>
+            <th>Confidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Drafts}}
+          {{$d := .}}
+          <tr{{if .NeedsReview}} style="background: var(--pico-mark-background-color);"{{end}}>
+            <td>
+              {{if not .Confirmed}}
+              <input type="checkbox" name="draft_{{.ID}}" checked>
+              {{else}}
+              <ins>Saved</ins>
+              {{end}}
+            </td>
+            <td>
+              <input type="date" name="date_{{.ID}}" value="{{.DateNormalized}}" size="12">
+              {{if .DateRaw}}<br><small class="muted">raw: {{.DateRaw}}</small>{{end}}
+            </td>
+            <td>
+              <select name="cat_{{.ID}}">
+                <option value=""></option>
+                {{range $.Categories}}
+                <option value="{{.}}"{{if eq . $d.CategoryNormalized}} selected{{end}}>{{.}}</option>
+                {{end}}
+              </select>
+              {{if .CategoryRaw}}<br><small class="muted">raw: {{.CategoryRaw}}</small>{{end}}
+            </td>
+            <td>
+              <input type="text" name="hrs_{{.ID}}" value="{{if gt .HoursNormalized 0.0}}{{money .HoursNormalized}}{{else}}{{.HoursRaw}}{{end}}" size="5">
+              {{if .HoursRaw}}<br><small class="muted">raw: {{.HoursRaw}}</small>{{end}}
+            </td>
+            <td>
+              <input type="text" name="notes_{{.ID}}" value="{{.NotesNormalized}}" size="20">
+              {{if .NotesRaw}}<br><small class="muted">raw: {{.NotesRaw}}</small>{{end}}
+            </td>
+            <td>
+              {{if ge .Confidence 0.8}}<ins>{{printf "%.0f%%" (mul .Confidence 100)}}</ins>
+              {{else if ge .Confidence 0.5}}<mark>{{printf "%.0f%%" (mul .Confidence 100)}}</mark>
+              {{else}}<mark class="contrast">{{printf "%.0f%%" (mul .Confidence 100)}}</mark>{{end}}
+              {{if .NeedsReview}}<br><small class="muted">needs review</small>{{end}}
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </figure>
+
+    <div style="display: flex; gap: 0.75rem; align-items: center;">
+      <button type="submit">Confirm Selected Entries</button>
+      <a role="button" class="secondary" href="/entries">Back to Entries</a>
+      <button type="button" class="secondary contrast" formaction="/ocr/import/{{.Session.ID}}/delete" formmethod="post">Delete Session</button>
+    </div>
+  </form>
+  {{else}}
+  <p class="muted">No entries extracted yet.</p>
+  {{end}}
+</section>
+{{else if eq .Session.State "processing"}}
+<section>
+  <article>
+    <h2>Processing...</h2>
+    <progress></progress>
+    <p class="muted">OCR is analyzing {{len .Images}} image(s). This page will update automatically.</p>
+    <meta http-equiv="refresh" content="5">
+  </article>
+</section>
+{{else if eq .Session.State "uploaded"}}
+<section>
+  <article>
+    <h2>Waiting for processing</h2>
+    <p class="muted">{{len .Images}} image(s) uploaded. If no OCR service is configured, start processing manually or refresh.</p>
+    <meta http-equiv="refresh" content="5">
+  </article>
+</section>
+{{else if eq .Session.State "confirmed"}}
+<section>
+  <article>
+    <h2>All entries confirmed</h2>
+    <p>{{len .Drafts}} entries were saved to your entries list.</p>
+    <a role="button" href="/entries">View Entries</a>
+  </article>
+</section>
+{{else if eq .Session.State "failed"}}
+<section>
+  <article>
+    <h2>Processing Failed</h2>
+    <p>The import session could not be completed. The uploaded images are preserved so you can retry.</p>
+    <p class="muted">{{.Session.ErrorMsg}}</p>
+  </article>
+</section>
+{{end}}
+
+{{if .Images}}
+<section>
+  <h2>Uploaded Images ({{len .Images}})</h2>
+  <div class="grid-2">
+    {{range .Images}}
+    <article>
+      <p><strong>{{.FileName}}</strong></p>
+      <small class="muted">{{div .FileSize 1024}} KB</small>
+    </article>
+    {{end}}
+  </div>
+</section>
+{{end}}
+{{end}}
