@@ -10,28 +10,28 @@ func (a *App) dashboard(w http.ResponseWriter, r *http.Request) {
 	years, err := a.store.ListAvailableYears()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list available years", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	months, err := a.store.ListAvailableMonths(year)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list available months", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	summary, totalHours, totalAmount, err := a.store.FilteredSummary(year, month)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("filtered summary", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	invoices, err := a.store.ListInvoices()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list invoices for dashboard", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	if len(invoices) > 8 {

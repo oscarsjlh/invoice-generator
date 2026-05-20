@@ -45,3 +45,8 @@ terraform.rc
 # Uncomment the line below if you want to ignore planout files.
 # planout
 invoice-app
+
+# Test artifacts
+*.db
+*.out
+coverage.html

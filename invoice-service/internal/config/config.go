@@ -3,20 +3,21 @@ package config
 import "os"
 
 type Config struct {
-	Address       string
-	DatabasePath  string
-	MigrationsDir string
-	TypstBin      string
-	SMTPHost      string
-	SMTPPort      string
-	SMTPUser      string
-	SMTPPass      string
-	SMTPFrom      string
-	OCRServiceURL string
-	OCREnabled    bool
-	OCRUploadDir  string
-	LogLevel      string
-	LogFormat     string
+	Address        string
+	DatabasePath   string
+	MigrationsDir  string
+	TypstBin       string
+	SMTPHost       string
+	SMTPPort       string
+	SMTPUser       string
+	SMTPPass       string
+	SMTPFrom       string
+	OCRServiceURL  string
+	OCREnabled     bool
+	OCRUploadDir   string
+	DefaultDueDays int
+	LogLevel       string
+	LogFormat      string
 }
 
 func Load() Config {

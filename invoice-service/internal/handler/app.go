@@ -1,13 +1,14 @@
 package handler
 
 import (
-	"database/sql"
 	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"invoice-app/internal/config"
@@ -17,9 +18,11 @@ import (
 )
 
 type App struct {
-	store  *db.Store
-	cfg    config.Config
-	logger *slog.Logger
+	store    db.Storer
+	cfg      config.Config
+	logger   *slog.Logger
+	baseTmpl *template.Template
+	ocrWg    sync.WaitGroup
 }
 
 type DashboardPageData struct {
@@ -68,7 +71,78 @@ type InvoicePreviewPageData struct {
 }
 
 func New(store *db.Store, cfg config.Config, logger *slog.Logger) *App {
-	return &App{store: store, cfg: cfg, logger: logger}
+	app := &App{store: store, cfg: cfg, logger: logger}
+	app.baseTmpl = app.compileTemplates()
+	return app
+}
+
+func (a *App) compileTemplates() *template.Template {
+	funcMap := template.FuncMap{
+		"money":     money,
+		"numfmt":    numfmt,
+		"dateLabel": dateLabel,
+		"selected":  selected,
+		"monthName": monthName,
+		"mul":       func(a float64, b float64) float64 { return a * b },
+		"divf":      func(a float64, b float64) float64 { return a / b },
+		"div":       func(a, b int64) int64 { return a / b },
+	}
+
+	tmpl, err := template.New("").Funcs(funcMap).ParseFS(templates.FS, "layout.html")
+	if err != nil {
+		a.logger.Error("compile base template", "error", err)
+		panic(fmt.Sprintf("failed to compile base template: %v", err))
+	}
+	return tmpl
+}
+
+// WaitForOCR blocks until all background OCR processing goroutines complete.
+func (a *App) WaitForOCR() {
+	a.ocrWg.Wait()
+}
+
+func (a *App) renderPage(w http.ResponseWriter, status int, page string, data any, extra ...string) {
+	files := append([]string{"layout.html"}, extra...)
+	files = append(files, page)
+
+	tmpl, err := a.baseTmpl.Clone()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("clone template: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if _, err := tmpl.ParseFS(templates.FS, files...); err != nil {
+		http.Error(w, fmt.Sprintf("parse template: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := tmpl.ExecuteTemplate(w, "layout", data); err != nil {
+		http.Error(w, fmt.Sprintf("execute template: %v", err), http.StatusInternalServerError)
+	}
+}
+
+func (a *App) renderPartial(w http.ResponseWriter, status int, name string, data any, files ...string) {
+	tmpl, err := a.baseTmpl.Clone()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("clone template: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if _, err := tmpl.ParseFS(templates.FS, files...); err != nil {
+		http.Error(w, fmt.Sprintf("parse partial: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := tmpl.ExecuteTemplate(w, name, data); err != nil {
+		http.Error(w, fmt.Sprintf("execute partial: %v", err), http.StatusInternalServerError)
+	}
+}
+
+// StoreForTest returns the underlying store for testing purposes.
+func (a *App) StoreForTest() db.Storer {
+	return a.store
 }
 
 func (a *App) Routes() http.Handler {
@@ -101,54 +175,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("GET /static/", func(w http.ResponseWriter, r *http.Request) {
 		http.StripPrefix("/static/", http.FileServerFS(static.FS)).ServeHTTP(w, r)
 	})
-	return a.recoverMiddleware(RequestLoggingMiddleware()(LoggerMiddleware(a.logger)(mux)))
-}
-
-func (a *App) renderPage(w http.ResponseWriter, status int, page string, data any, extra ...string) {
-	files := append([]string{"layout.html"}, extra...)
-	files = append(files, page)
-	tmpl, err := template.New("layout.html").Funcs(template.FuncMap{
-		"money":     money,
-		"numfmt":    numfmt,
-		"dateLabel": dateLabel,
-		"selected":  selected,
-		"monthName": monthName,
-		"mul":       func(a float64, b float64) float64 { return a * b },
-		"divf":      func(a float64, b float64) float64 { return a / b },
-		"div":       func(a, b int64) int64 { return a / b },
-	}).ParseFS(templates.FS, files...)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("parse template: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	if err := tmpl.ExecuteTemplate(w, "layout", data); err != nil {
-		http.Error(w, fmt.Sprintf("execute template: %v", err), http.StatusInternalServerError)
-	}
-}
-
-func (a *App) renderPartial(w http.ResponseWriter, status int, name string, data any, files ...string) {
-	tmpl, err := template.New(name).Funcs(template.FuncMap{
-		"money":     money,
-		"numfmt":    numfmt,
-		"dateLabel": dateLabel,
-		"selected":  selected,
-		"monthName": monthName,
-		"mul":       func(a float64, b float64) float64 { return a * b },
-		"divf":      func(a float64, b float64) float64 { return a / b },
-		"div":       func(a, b int64) int64 { return a / b },
-	}).ParseFS(templates.FS, files...)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("parse partial: %v", err), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	if err := tmpl.ExecuteTemplate(w, name, data); err != nil {
-		http.Error(w, fmt.Sprintf("execute partial: %v", err), http.StatusInternalServerError)
-	}
+	return recoverMiddleware(RequestLoggingMiddleware()(LoggerMiddleware(a.logger)(mux)))
 }
 
 func (a *App) redirect(w http.ResponseWriter, r *http.Request, path string, notice string) {
@@ -157,7 +184,7 @@ func (a *App) redirect(w http.ResponseWriter, r *http.Request, path string, noti
 		if strings.Contains(path, "?") {
 			separator = "&"
 		}
-		path += separator + "notice=" + urlQueryEscape(notice)
+		path += separator + "notice=" + url.QueryEscape(notice)
 	}
 	http.Redirect(w, r, path, http.StatusSeeOther)
 }
@@ -281,12 +308,19 @@ func monthName(value string) string {
 	return value
 }
 
-func urlQueryEscape(value string) string {
-	replacer := strings.NewReplacer("%", "%25", " ", "%20", "&", "%26", "?", "%3F", "=", "%3D", "+", "%2B")
-	return replacer.Replace(value)
+// sanitizeHeaderValue strips control characters (CR, LF, NUL) from a string
+// to prevent HTTP header injection.
+func sanitizeHeaderValue(value string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\r' || r == '\n' || r == 0 {
+			return -1
+		}
+		return r
+	}, value)
 }
 
-func (a *App) recoverMiddleware(next http.Handler) http.Handler {
+// recoverMiddleware recovers from panics and returns a 500 error.
+func recoverMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
@@ -295,12 +329,4 @@ func (a *App) recoverMiddleware(next http.Handler) http.Handler {
 		}()
 		next.ServeHTTP(w, r)
 	})
-}
-
-func notFoundIfNoRows(w http.ResponseWriter, err error) bool {
-	if err == sql.ErrNoRows {
-		http.NotFound(w, nil)
-		return true
-	}
-	return false
 }

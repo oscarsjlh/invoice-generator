@@ -140,6 +140,9 @@ func FormatInvoiceTyp(invoice InvoiceData) string {
 func escape(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, `#`, `\#`)
+	s = strings.ReplaceAll(s, `@`, `\@`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
 	return s
 }
 
@@ -180,6 +183,32 @@ type InvoiceData struct {
 	CustomerCity       string
 	CustomerPostalCode string
 	Items              []ItemData
+}
+
+// parseAddress splits an address string into street, city, and postal code.
+// Convention: up to 3 non-empty lines — last line = postal code, second-to-last = city, rest = street.
+func parseAddress(address string) (street, city, postalCode string) {
+	parts := strings.Split(address, "\n")
+	nonEmpty := []string{}
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			nonEmpty = append(nonEmpty, p)
+		}
+	}
+	switch len(nonEmpty) {
+	case 0:
+		return address, "", ""
+	case 1:
+		return nonEmpty[0], "", ""
+	case 2:
+		return nonEmpty[0], nonEmpty[1], ""
+	default:
+		last := nonEmpty[len(nonEmpty)-1]
+		city := nonEmpty[len(nonEmpty)-2]
+		street = strings.Join(nonEmpty[:len(nonEmpty)-2], ", ")
+		return street, city, last
+	}
 }
 
 type ItemData struct {

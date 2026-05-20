@@ -2,6 +2,7 @@ package email
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"strconv"
 
@@ -38,6 +39,7 @@ Best regards`, toName, invoiceNumber)
 	}
 
 	d := gomail.NewDialer(cfg.SMTPHost, port, cfg.SMTPUser, cfg.SMTPPass)
+	d.TLSConfig = &tls.Config{ServerName: cfg.SMTPHost}
 	if err := d.DialAndSend(m); err != nil {
 		return fmt.Errorf("send email: %w", err)
 	}

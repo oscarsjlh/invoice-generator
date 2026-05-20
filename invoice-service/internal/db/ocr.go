@@ -191,10 +191,10 @@ func (s *Store) UpdateDraftEntry(id int64, date, category, hours, notes string) 
 	return nil
 }
 
-func (s *Store) ConfirmDraftEntries(sessionID int64, ids []int64) error {
+func (s *Store) ConfirmDraftEntries(sessionID int64, ids []int64) (confirmed []int64, skipped []int64, err error) {
 	tx, err := s.db.Begin()
 	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+		return nil, nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -213,12 +213,13 @@ func (s *Store) ConfirmDraftEntries(sessionID int64, ids []int64) error {
 			&d.Confidence, &d.NeedsReview, &d.Confirmed,
 		)
 		if err != nil {
-			return fmt.Errorf("get draft %d: %w", id, err)
+			return nil, nil, fmt.Errorf("get draft %d: %w", id, err)
 		}
 		if d.SessionID != sessionID {
-			return fmt.Errorf("draft %d does not belong to session %d", id, sessionID)
+			return nil, nil, fmt.Errorf("draft %d does not belong to session %d", id, sessionID)
 		}
 		if d.DateNormalized == "" || d.CategoryNormalized == "" || d.HoursNormalized <= 0 {
+			skipped = append(skipped, id)
 			continue
 		}
 
@@ -226,12 +227,14 @@ func (s *Store) ConfirmDraftEntries(sessionID int64, ids []int64) error {
 			`INSERT INTO entries (date, category, hours, notes) VALUES (?, ?, ?, ?)`,
 			d.DateNormalized, d.CategoryNormalized, d.HoursNormalized, strings.TrimSpace(d.NotesNormalized),
 		); err != nil {
-			return fmt.Errorf("create entry from draft %d: %w", id, err)
+			return nil, nil, fmt.Errorf("create entry from draft %d: %w", id, err)
 		}
 
 		if _, err := tx.Exec(`UPDATE ocr_draft_entries SET confirmed = 1 WHERE id = ?`, id); err != nil {
-			return fmt.Errorf("mark confirmed %d: %w", id, err)
+			return nil, nil, fmt.Errorf("mark confirmed %d: %w", id, err)
 		}
+
+		confirmed = append(confirmed, id)
 	}
 
 	var remaining int
@@ -240,7 +243,7 @@ func (s *Store) ConfirmDraftEntries(sessionID int64, ids []int64) error {
 		sessionID,
 	).Scan(&remaining)
 	if err != nil {
-		return fmt.Errorf("count unconfirmed: %w", err)
+		return nil, nil, fmt.Errorf("count unconfirmed: %w", err)
 	}
 	var newState string
 	if remaining == 0 {
@@ -253,10 +256,14 @@ func (s *Store) ConfirmDraftEntries(sessionID int64, ids []int64) error {
 		`UPDATE ocr_import_sessions SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
 		newState, sessionID,
 	); err != nil {
-		return fmt.Errorf("update session state: %w", err)
+		return nil, nil, fmt.Errorf("update session state: %w", err)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, nil, fmt.Errorf("commit: %w", err)
+	}
+
+	return confirmed, skipped, nil
 }
 
 func (s *Store) countUnconfirmedDrafts(sessionID int64) (int, error) {

@@ -88,8 +88,8 @@
 
     <div style="display: flex; gap: 0.75rem; align-items: center;">
       <button type="submit">Confirm Selected Entries</button>
-      <a role="button" class="secondary" href="/entries">Back to Entries</a>
-      <button type="button" class="secondary contrast" formaction="/ocr/import/{{.Session.ID}}/delete" formmethod="post">Delete Session</button>
+      <button type="button" class="secondary" onclick="window.location.href='/entries'">Back to Entries</button>
+      <button type="submit" class="secondary contrast" formaction="/ocr/import/{{.Session.ID}}/delete" formmethod="post">Delete Session</button>
     </div>
   </form>
   {{else}}
