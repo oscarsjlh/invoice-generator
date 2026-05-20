@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"invoice-app/internal/config"
 	"invoice-app/internal/db"
@@ -32,9 +36,26 @@ func main() {
 		Handler: app.Routes(),
 	}
 
-	logger.Info("server_started", "addr", cfg.Address)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logger.Error("serve", "error", err)
-		os.Exit(1)
+	go func() {
+		logger.Info("server_started", "addr", cfg.Address)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("serve", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	logger.Info("shutting_down")
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		logger.Error("server_shutdown", "error", err)
 	}
+
+	app.WaitForOCR()
+	logger.Info("server_stopped")
 }

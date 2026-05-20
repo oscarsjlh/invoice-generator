@@ -15,3 +15,13 @@ vendor:
 
 fmt:
 	go fmt ./...
+
+test:
+	go test -race -count=1 ./...
+
+test-fast:
+	go test -race -count=1 -tags='!e2e' ./...
+
+test-cover:
+	go test -race -count=1 -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html

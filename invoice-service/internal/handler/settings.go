@@ -11,7 +11,7 @@ func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {
 	settings, err := a.store.LoadSettings()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("load settings", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	a.renderPage(w, http.StatusOK, "settings.html", SettingsPageData{
@@ -22,7 +22,7 @@ func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) saveSettings(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
 	}
 	dueDays, err := parsePositiveInt(r.FormValue("default_due_days"))
@@ -49,7 +49,7 @@ func (a *App) saveSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := a.store.SaveSettings(settings); err != nil {
 		LoggerFromContext(r.Context()).Error("save settings", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	a.redirect(w, r, "/settings", "Settings saved")

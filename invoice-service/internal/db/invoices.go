@@ -21,7 +21,7 @@ func (s *Store) ListMonthlySummary() ([]MonthlySummary, error) {
 		JOIN rates r
 			ON e.category = r.category
 			AND e.date >= r.start_date
-			AND e.date <= r.end_date
+			AND (r.end_date = '' OR e.date <= r.end_date)
 		GROUP BY e.category, month
 		ORDER BY month DESC, e.category ASC
 	`)
@@ -95,7 +95,7 @@ func (s *Store) FilteredSummary(year, month string) ([]MonthlySummary, float64, 
 		JOIN rates r
 			ON e.category = r.category
 			AND e.date >= r.start_date
-			AND e.date <= r.end_date
+			AND (r.end_date = '' OR e.date <= r.end_date)
 		WHERE 1=1
 	`
 	args := []any{}
@@ -173,7 +173,7 @@ func (s *Store) CountUnratedEntries(month, category string) (int, error) {
 			FROM rates r
 			WHERE r.category = e.category
 			  AND e.date >= r.start_date
-			  AND e.date <= r.end_date
+			  AND (r.end_date = '' OR e.date <= r.end_date)
 		  )
 	`, month, category, category)
 
@@ -185,7 +185,13 @@ func (s *Store) CountUnratedEntries(month, category string) (int, error) {
 }
 
 func (s *Store) GenerateInvoice(month, category, invoiceDate string, dueDays int, settings Settings) (int64, error) {
-	unrated, err := s.CountUnratedEntries(month, category)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("begin invoice transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	unrated, err := countUnratedEntriesTx(tx, month, category)
 	if err != nil {
 		return 0, err
 	}
@@ -199,19 +205,13 @@ func (s *Store) GenerateInvoice(month, category, invoiceDate string, dueDays int
 	}
 	dueDate := parsedInvoiceDate.AddDate(0, 0, dueDays).Format("2006-01-02")
 
-	lines, total, err := s.queryInvoiceLines(month, category)
+	lines, total, err := queryInvoiceLinesTx(tx, month, category)
 	if err != nil {
 		return 0, err
 	}
 	if len(lines) == 0 {
 		return 0, fmt.Errorf("no invoiceable entries found for %s", month)
 	}
-
-	tx, err := s.db.Begin()
-	if err != nil {
-		return 0, fmt.Errorf("begin invoice transaction: %w", err)
-	}
-	defer tx.Rollback()
 
 	invoiceNumber, err := nextInvoiceNumber(tx, month, category)
 	if err != nil {
@@ -274,6 +274,68 @@ func (s *Store) GenerateInvoice(month, category, invoiceDate string, dueDays int
 	}
 
 	return invoiceID, nil
+}
+
+func countUnratedEntriesTx(tx *sql.Tx, month, category string) (int, error) {
+	row := tx.QueryRow(`
+		SELECT COUNT(*)
+		FROM entries e
+		WHERE strftime('%Y-%m', e.date) = ?
+		  AND (? = 'All' OR e.category = ?)
+		  AND NOT EXISTS (
+			SELECT 1
+			FROM rates r
+			WHERE r.category = e.category
+			  AND e.date >= r.start_date
+			  AND (r.end_date = '' OR e.date <= r.end_date)
+		  )
+	`, month, category, category)
+
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return 0, fmt.Errorf("count unrated entries: %w", err)
+	}
+	return count, nil
+}
+
+func queryInvoiceLinesTx(tx *sql.Tx, month, category string) ([]InvoiceLine, float64, error) {
+	rows, err := tx.Query(`
+		SELECT
+			e.category,
+			ROUND(SUM(e.hours), 2) AS hours,
+			r.rate,
+			ROUND(SUM(e.hours * r.rate), 2) AS amount
+		FROM entries e
+		JOIN rates r
+			ON e.category = r.category
+			AND e.date >= r.start_date
+			AND (r.end_date = '' OR e.date <= r.end_date)
+		WHERE strftime('%Y-%m', e.date) = ?
+		  AND (? = 'All' OR e.category = ?)
+		GROUP BY e.category, r.rate
+		ORDER BY e.category ASC
+	`, month, category, category)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query invoice lines: %w", err)
+	}
+	defer rows.Close()
+
+	lines := []InvoiceLine{}
+	var total float64
+	for rows.Next() {
+		var line InvoiceLine
+		if err := rows.Scan(&line.Category, &line.Hours, &line.Rate, &line.Amount); err != nil {
+			return nil, 0, fmt.Errorf("scan invoice line: %w", err)
+		}
+		total += line.Amount
+		lines = append(lines, line)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	return lines, total, nil
 }
 
 func (s *Store) GetInvoice(id int64) (Invoice, error) {
@@ -355,7 +417,7 @@ func (s *Store) queryInvoiceLines(month, category string) ([]InvoiceLine, float6
 		JOIN rates r
 			ON e.category = r.category
 			AND e.date >= r.start_date
-			AND e.date <= r.end_date
+			AND (r.end_date = '' OR e.date <= r.end_date)
 		WHERE strftime('%Y-%m', e.date) = ?
 		  AND (? = 'All' OR e.category = ?)
 		GROUP BY e.category, r.rate

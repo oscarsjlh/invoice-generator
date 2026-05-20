@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -19,19 +20,19 @@ func (a *App) invoicesPage(w http.ResponseWriter, r *http.Request) {
 	invoices, err := a.store.ListInvoices()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list invoices", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	categories, err := a.store.ListCategories()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list categories", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	settings, err := a.store.LoadSettings()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("load settings", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	now := time.Now()
@@ -48,7 +49,7 @@ func (a *App) invoicesPage(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) generateInvoice(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
 	}
 
@@ -71,7 +72,7 @@ func (a *App) generateInvoice(w http.ResponseWriter, r *http.Request) {
 	settings, err := a.store.LoadSettings()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("load settings for invoice generation", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -84,7 +85,7 @@ func (a *App) generateInvoice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	LoggerFromContext(r.Context()).Info("invoice created", "invoice_id", invoiceID, "month", month, "category", category)
-	http.Redirect(w, r, fmt.Sprintf("/invoices/%d?notice=%s", invoiceID, urlQueryEscape("Invoice created")), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/invoices/%d?notice=%s", invoiceID, url.QueryEscape("Invoice created")), http.StatusSeeOther)
 }
 
 func (a *App) invoicePreview(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +101,7 @@ func (a *App) invoicePreview(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		LoggerFromContext(r.Context()).Error("get invoice for preview", "invoice_id", id, "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	a.renderPage(w, http.StatusOK, "invoice_preview_page.html", InvoicePreviewPageData{
@@ -122,11 +123,11 @@ func (a *App) invoicePDF(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		LoggerFromContext(r.Context()).Error("get invoice for pdf", "invoice_id", id, "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	pdfData, err := a.generateInvoicePDF(invoice)
+	pdfData, err := a.buildPDF(invoice)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("generate pdf", "invoice_id", id, "invoice_number", invoice.InvoiceNumber, "error", err)
 		http.Error(w, fmt.Sprintf("generate pdf: %v", err), http.StatusInternalServerError)
@@ -134,7 +135,7 @@ func (a *App) invoicePDF(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.pdf"`, invoice.InvoiceNumber))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.pdf"`, sanitizeHeaderValue(invoice.InvoiceNumber)))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(pdfData)))
 	w.Write(pdfData)
 }
@@ -152,14 +153,14 @@ func (a *App) sendInvoice(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		LoggerFromContext(r.Context()).Error("get invoice for send", "invoice_id", id, "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	settings, err := a.store.LoadSettings()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("load settings for send", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -181,7 +182,7 @@ func (a *App) sendInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pdfData, err := a.generateInvoicePDF(invoice)
+	pdfData, err := a.buildPDF(invoice)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("generate pdf for send", "invoice_id", id, "invoice_number", invoice.InvoiceNumber, "error", err)
 		a.redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), fmt.Sprintf("Generate PDF failed: %v", err))
@@ -209,7 +210,7 @@ func (a *App) sendInvoice(w http.ResponseWriter, r *http.Request) {
 	a.redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), fmt.Sprintf("Invoice sent to %s", settings.CustomerEmail))
 }
 
-func (a *App) generateInvoicePDF(invoice db.Invoice) ([]byte, error) {
+func (a *App) buildPDF(invoice db.Invoice) ([]byte, error) {
 	tmpDir, err := os.MkdirTemp("", "typst-invoice-*")
 	if err != nil {
 		return nil, fmt.Errorf("create temp dir: %w", err)
@@ -225,7 +226,10 @@ func (a *App) generateInvoicePDF(invoice db.Invoice) ([]byte, error) {
 	street, city, postalCode := parseAddress(invoice.BusinessAddress)
 
 	// Load settings for customer info
-	settings, _ := a.store.LoadSettings()
+	settings, err := a.store.LoadSettings()
+	if err != nil {
+		a.logger.Error("load settings for pdf", "error", err)
+	}
 
 	customerStreet, customerCity, customerPostalCode := parseAddress(settings.CustomerAddress)
 	if customerStreet == "" {
