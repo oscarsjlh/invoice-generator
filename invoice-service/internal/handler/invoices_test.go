@@ -10,22 +10,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"invoice-app/internal/config"
 	"invoice-app/internal/db"
-	"invoice-app/internal/testutil"
 )
 
 func TestInvoicesPageReturns200(t *testing.T) {
 	t.Parallel()
-	store := testutil.NewTestDB(t)
-	cfg := config.Config{Address: ":8080", OCREnabled: false}
-	logger := NewLogger("info", "text")
-	app := New(store, cfg, logger)
+	ta := newTestApp(t)
 
 	req := httptest.NewRequest("GET", "/invoices", nil)
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.invoicesPage(w, req)
+	ta.app.invoicesPage(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -35,15 +32,10 @@ func TestInvoicesPageReturns200(t *testing.T) {
 
 func TestGenerateInvoiceSuccess(t *testing.T) {
 	t.Parallel()
-	store := testutil.NewTestDB(t)
+	ta := newTestApp(t)
 
-	// Set up entries and rates for March 2024
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	store.CreateRate("Consulting", "2024-01-01", "", 150.00)
-
-	cfg := config.Config{Address: ":8080", OCREnabled: false}
-	logger := NewLogger("info", "text")
-	app := New(store, cfg, logger)
+	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
+	ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00)
 
 	req := newFormRequest("/invoices/generate", urlencode(map[string]string{
 		"month":        "2024-03",
@@ -51,9 +43,11 @@ func TestGenerateInvoiceSuccess(t *testing.T) {
 		"due_days":     "30",
 		"category":     "All",
 	}))
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.generateInvoice(w, req)
+	ta.app.generateInvoice(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
@@ -63,14 +57,9 @@ func TestGenerateInvoiceSuccess(t *testing.T) {
 
 func TestGenerateInvoiceFailsWhenUnrated(t *testing.T) {
 	t.Parallel()
-	store := testutil.NewTestDB(t)
+	ta := newTestApp(t)
 
-	// Create entry without rate
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-
-	cfg := config.Config{Address: ":8080", OCREnabled: false}
-	logger := NewLogger("info", "text")
-	app := New(store, cfg, logger)
+	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
 
 	req := newFormRequest("/invoices/generate", urlencode(map[string]string{
 		"month":        "2024-03",
@@ -78,9 +67,11 @@ func TestGenerateInvoiceFailsWhenUnrated(t *testing.T) {
 		"due_days":     "30",
 		"category":     "All",
 	}))
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.generateInvoice(w, req)
+	ta.app.generateInvoice(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
@@ -90,12 +81,11 @@ func TestGenerateInvoiceFailsWhenUnrated(t *testing.T) {
 
 func TestInvoicePreviewReturns200(t *testing.T) {
 	t.Parallel()
-	store := testutil.NewTestDB(t)
+	ta := newTestApp(t)
 
-	// Create an invoice first
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	store.CreateRate("Consulting", "2024-01-01", "", 150.00)
-	store.SaveSettings(db.Settings{
+	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
+	ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00)
+	ta.store.SaveSettings(db.Settings{
 		BusinessName:    "Test Business Ltd",
 		BusinessAddress: "123 Test St\nLondon\nSW1A 1AA",
 		BankName:        "Test Bank",
@@ -105,12 +95,7 @@ func TestInvoicePreviewReturns200(t *testing.T) {
 		PaymentTerms:    "Payment due within 30 days.",
 	})
 
-	cfg := config.Config{Address: ":8080", OCREnabled: false}
-	logger := NewLogger("info", "text")
-	app := New(store, cfg, logger)
-
-	// Generate an invoice first
-	id, err := store.GenerateInvoice("2024-03", "All", "2024-04-01", 30, db.Settings{
+	id, err := ta.store.GenerateInvoice("2024-03", "All", "2024-04-01", 30, db.Settings{
 		BusinessName:    "Test Business Ltd",
 		BusinessAddress: "123 Test St\nLondon\nSW1A 1AA",
 		BankName:        "Test Bank",
@@ -122,9 +107,12 @@ func TestInvoicePreviewReturns200(t *testing.T) {
 	require.NoError(t, err)
 
 	req := httptest.NewRequest("GET", fmt.Sprintf("/invoices/%d", id), nil)
+	req.SetPathValue("id", fmt.Sprintf("%d", id))
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.Routes().ServeHTTP(w, req)
+	ta.app.invoicePreview(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -134,15 +122,15 @@ func TestInvoicePreviewReturns200(t *testing.T) {
 
 func TestInvoicePreview404(t *testing.T) {
 	t.Parallel()
-	store := testutil.NewTestDB(t)
-	cfg := config.Config{Address: ":8080", OCREnabled: false}
-	logger := NewLogger("info", "text")
-	app := New(store, cfg, logger)
+	ta := newTestApp(t)
 
 	req := httptest.NewRequest("GET", "/invoices/99999", nil)
+	req.SetPathValue("id", "99999")
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.Routes().ServeHTTP(w, req)
+	ta.app.invoicePreview(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)

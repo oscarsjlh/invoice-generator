@@ -9,30 +9,25 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"invoice-app/internal/config"
 	"invoice-app/internal/db"
-	"invoice-app/internal/testutil"
 )
 
 func TestSettingsPageReturnsSavedValues(t *testing.T) {
 	t.Parallel()
-	store := testutil.NewTestDB(t)
+	ta := newTestApp(t)
 
-	// Save some settings first
-	store.SaveSettings(db.Settings{
+	ta.store.SaveSettings(db.Settings{
 		BusinessName:    "Test Business Ltd",
 		BusinessAddress: "123 Test St\nLondon\nSW1A 1AA",
 		DefaultDueDays:  45,
 	})
 
-	cfg := config.Config{Address: ":8080", OCREnabled: false}
-	logger := NewLogger("info", "text")
-	app := New(store, cfg, logger)
-
 	req := httptest.NewRequest("GET", "/settings", nil)
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.settingsPage(w, req)
+	ta.app.settingsPage(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -42,11 +37,7 @@ func TestSettingsPageReturnsSavedValues(t *testing.T) {
 
 func TestSaveSettingsRedirects(t *testing.T) {
 	t.Parallel()
-	store := testutil.NewTestDB(t)
-
-	cfg := config.Config{Address: ":8080", OCREnabled: false}
-	logger := NewLogger("info", "text")
-	app := New(store, cfg, logger)
+	ta := newTestApp(t)
 
 	req := newFormRequest("/settings", urlencode(map[string]string{
 		"business_name":    "New Business Ltd",
@@ -55,9 +46,11 @@ func TestSaveSettingsRedirects(t *testing.T) {
 		"customer_name":    "Jane Doe",
 		"customer_email":   "jane@example.com",
 	}))
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.saveSettings(w, req)
+	ta.app.saveSettings(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)

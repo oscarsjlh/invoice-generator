@@ -24,11 +24,12 @@ RUN wget -O - 'https://github.com/typst/typst/releases/download/v0.13.1/typst-x8
     && chmod +x /usr/local/bin/typst
 
 RUN adduser -D -H -h /app -u 1000 app \
-    && mkdir -p /app \
-    && chown app:app /app
+    && mkdir -p /app/data /app/migrations /app/auth-migrations \
+    && chown app:app /app /app/data
 
 COPY --from=build /out/invoice-app /app/
 COPY migrations /app/migrations
+COPY auth-migrations /app/auth-migrations
 
 FROM scratch
 
@@ -40,9 +41,9 @@ COPY --from=runtime /usr/local/bin/typst /usr/local/bin/typst
 COPY --from=runtime /usr/share/fonts /usr/share/fonts
 COPY --from=runtime --chown=1000:1000 /app /app
 
+WORKDIR /app
+
 ENV ADDRESS=:8080 \
-    DATABASE_PATH=/app/data/invoices.db \
-    MIGRATIONS_DIR=/app/migrations \
     SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
 USER 1000:1000

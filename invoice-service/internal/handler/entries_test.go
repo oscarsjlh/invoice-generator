@@ -10,25 +10,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"invoice-app/internal/config"
+	"invoice-app/internal/db"
 	"invoice-app/internal/testutil"
 )
 
-func newTestApp(t *testing.T) *App {
-	t.Helper()
-	store := testutil.NewTestDB(t)
-	cfg := config.Config{
-		Address:        ":8080",
-		TypstBin:       "", // disable PDF for handler tests
-		OCREnabled:     false,
-		DefaultDueDays: 30,
-	}
-	logger := NewLogger("info", "text")
-	return New(store, cfg, logger)
-}
-
 func TestCreateEntryValid(t *testing.T) {
 	t.Parallel()
-	app := newTestApp(t)
+	ta := newTestApp(t)
 
 	req := newFormRequest("/entries", urlencode(map[string]string{
 		"date":     "2024-03-15",
@@ -36,9 +24,11 @@ func TestCreateEntryValid(t *testing.T) {
 		"hours":    "4.5",
 		"notes":    "Client meeting",
 	}))
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.createEntry(w, req)
+	ta.app.createEntry(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
@@ -47,15 +37,17 @@ func TestCreateEntryValid(t *testing.T) {
 
 func TestCreateEntryMissingCategory(t *testing.T) {
 	t.Parallel()
-	app := newTestApp(t)
+	ta := newTestApp(t)
 
 	req := newFormRequest("/entries", urlencode(map[string]string{
 		"date":  "2024-03-15",
 		"hours": "4.5",
 	}))
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.createEntry(w, req)
+	ta.app.createEntry(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
@@ -63,16 +55,18 @@ func TestCreateEntryMissingCategory(t *testing.T) {
 
 func TestCreateEntryInvalidHours(t *testing.T) {
 	t.Parallel()
-	app := newTestApp(t)
+	ta := newTestApp(t)
 
 	req := newFormRequest("/entries", urlencode(map[string]string{
 		"date":     "2024-03-15",
 		"category": "Consulting",
 		"hours":    "abc",
 	}))
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.createEntry(w, req)
+	ta.app.createEntry(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
@@ -80,19 +74,16 @@ func TestCreateEntryInvalidHours(t *testing.T) {
 
 func TestEntriesTableReturnsPartial(t *testing.T) {
 	t.Parallel()
-	app := newTestApp(t)
+	ta := newTestApp(t)
 
-	// Create an entry first via the store directly
-	store := testutil.NewTestDB(t)
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	cfg := config.Config{Address: ":8080", OCREnabled: false}
-	logger := NewLogger("info", "text")
-	app = New(store, cfg, logger)
+	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
 
 	req := httptest.NewRequest("GET", "/entries/table", nil)
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.entriesTable(w, req)
+	ta.app.entriesTable(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -102,21 +93,39 @@ func TestEntriesTableReturnsPartial(t *testing.T) {
 
 func TestDeleteEntryRedirects(t *testing.T) {
 	t.Parallel()
-	app := newTestApp(t)
+	ta := newTestApp(t)
 
-	// Create an entry first via the store directly
-	store := testutil.NewTestDB(t)
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	cfg := config.Config{Address: ":8080", OCREnabled: false}
-	logger := NewLogger("info", "text")
-	app = New(store, cfg, logger)
+	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
 
 	req := httptest.NewRequest("POST", "/entries/1/delete", nil)
+	req.SetPathValue("id", "1")
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.Routes().ServeHTTP(w, req)
+	ta.app.deleteEntry(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
 	assert.Contains(t, resp.Header.Get("Location"), "/entries")
+}
+
+type testApp struct {
+	app   *App
+	store *db.Store
+}
+
+func newTestApp(t *testing.T) *testApp {
+	t.Helper()
+	store := testutil.NewTestDB(t)
+	cfg := config.Config{
+		Address:        ":8080",
+		TypstBin:       "",
+		OCREnabled:     false,
+		DefaultDueDays: 30,
+	}
+	logger := NewLogger("error", "text")
+	multiStore := db.NewMultiStore(t.TempDir(), testutil.MigrationsDir(t))
+	multiStore.SetLegacyStore(store)
+	return &testApp{app: New(multiStore, nil, nil, nil, cfg, logger), store: store}
 }

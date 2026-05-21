@@ -8,19 +8,21 @@ import (
 )
 
 func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {
-	settings, err := a.store.LoadSettings()
+	store := StoreFromContext(r.Context())
+	settings, err := store.LoadSettings()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("load settings", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.renderPage(w, http.StatusOK, "settings.html", SettingsPageData{
+	a.renderPage(w, r, http.StatusOK, "settings.html", SettingsPageData{
 		Settings: settings,
 		Notice:   noticeFromRequest(r),
 	}, "settings.html")
 }
 
 func (a *App) saveSettings(w http.ResponseWriter, r *http.Request) {
+	store := StoreFromContext(r.Context())
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
@@ -47,7 +49,7 @@ func (a *App) saveSettings(w http.ResponseWriter, r *http.Request) {
 		CustomerPostalCode: strings.TrimSpace(r.FormValue("customer_postal_code")),
 		CustomerCity:       strings.TrimSpace(r.FormValue("customer_city")),
 	}
-	if err := a.store.SaveSettings(settings); err != nil {
+	if err := store.SaveSettings(settings); err != nil {
 		LoggerFromContext(r.Context()).Error("save settings", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return

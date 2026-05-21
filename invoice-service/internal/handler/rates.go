@@ -7,19 +7,21 @@ import (
 )
 
 func (a *App) ratesPage(w http.ResponseWriter, r *http.Request) {
-	rates, err := a.store.ListRates()
+	store := StoreFromContext(r.Context())
+	rates, err := store.ListRates()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list rates", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.renderPage(w, http.StatusOK, "rates.html", RatesPageData{
+	a.renderPage(w, r, http.StatusOK, "rates.html", RatesPageData{
 		Rates:  rates,
 		Notice: noticeFromRequest(r),
 	}, "rates_table.html")
 }
 
 func (a *App) createRate(w http.ResponseWriter, r *http.Request) {
+	store := StoreFromContext(r.Context())
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
@@ -59,7 +61,7 @@ func (a *App) createRate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.store.CreateRate(category, startDate, endDate, rateValue); err != nil {
+	if err := store.CreateRate(category, startDate, endDate, rateValue); err != nil {
 		LoggerFromContext(r.Context()).Error("create rate", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -68,12 +70,13 @@ func (a *App) createRate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) deleteRate(w http.ResponseWriter, r *http.Request) {
+	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
 		http.Error(w, "invalid rate id", http.StatusBadRequest)
 		return
 	}
-	if err := a.store.DeleteRate(id); err != nil {
+	if err := store.DeleteRate(id); err != nil {
 		LoggerFromContext(r.Context()).Error("delete rate", "rate_id", id, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -84,7 +87,7 @@ func (a *App) deleteRate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rates, err := a.store.ListRates()
+	rates, err := store.ListRates()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list rates after delete", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -94,12 +97,13 @@ func (a *App) deleteRate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) editRateForm(w http.ResponseWriter, r *http.Request) {
+	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
 		http.Error(w, "invalid rate id", http.StatusBadRequest)
 		return
 	}
-	rate, err := a.store.GetRate(id)
+	rate, err := store.GetRate(id)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("get rate for edit", "rate_id", id, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -109,6 +113,7 @@ func (a *App) editRateForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) updateRate(w http.ResponseWriter, r *http.Request) {
+	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
 		http.Error(w, "invalid rate id", http.StatusBadRequest)
@@ -154,13 +159,13 @@ func (a *App) updateRate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.store.UpdateRate(id, category, startDate, endDate, rateValue); err != nil {
+	if err := store.UpdateRate(id, category, startDate, endDate, rateValue); err != nil {
 		LoggerFromContext(r.Context()).Error("update rate", "rate_id", id, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	rates, err := a.store.ListRates()
+	rates, err := store.ListRates()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list rates after update", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -170,7 +175,8 @@ func (a *App) updateRate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) ratesTable(w http.ResponseWriter, r *http.Request) {
-	rates, err := a.store.ListRates()
+	store := StoreFromContext(r.Context())
+	rates, err := store.ListRates()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list rates table", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

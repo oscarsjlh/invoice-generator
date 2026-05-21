@@ -1,0 +1,124 @@
+{{define "title"}}Sign In - Invoice App{{end}}
+
+{{define "content"}}
+<article style="max-width: 480px; margin: 4rem auto;">
+  <hgroup>
+    <h2>Sign In</h2>
+    <p>Use your passkey to sign in</p>
+  </hgroup>
+
+  {{if .Notice}}
+  <p style="color: var(--pico-del-color);">{{.Notice}}</p>
+  {{end}}
+
+  <form id="login-form" onsubmit="return beginLogin(event)">
+    <label for="username">
+      Username
+      <input type="text" id="username" name="username" required autocomplete="username webauthn" placeholder="Enter your username">
+    </label>
+    <button type="submit" id="login-btn">Sign in with Passkey</button>
+  </form>
+
+  <p style="text-align: center; margin-top: 1rem;">
+    Don't have an account? <a href="/register">Create one</a>
+  </p>
+</article>
+
+<script>
+function base64urlToBuffer(base64url) {
+  const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+  const padding = '='.repeat((4 - base64.length % 4) % 4);
+  const binary = atob(base64 + padding);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+function abToBase64url(buf) {
+  if (!buf) {
+    throw new Error('Expected ArrayBuffer but got ' + buf);
+  }
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+function loginCredToJSON(cred) {
+  const json = {
+    id: cred.id,
+    type: cred.type,
+    rawId: abToBase64url(cred.rawId),
+    response: {
+      clientDataJSON: abToBase64url(cred.response.clientDataJSON),
+      authenticatorData: abToBase64url(cred.response.authenticatorData),
+      signature: abToBase64url(cred.response.signature),
+    },
+  };
+  if (cred.response.userHandle) {
+    json.response.userHandle = abToBase64url(cred.response.userHandle);
+  }
+  return json;
+}
+
+async function beginLogin(event) {
+  event.preventDefault();
+  const username = document.getElementById('username').value;
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+
+  try {
+    const beginResp = await fetch('/login/begin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username }),
+    });
+
+    if (!beginResp.ok) {
+      const err = await beginResp.json();
+      alert('Error: ' + (err.error || 'Failed to start sign in'));
+      btn.disabled = false;
+      btn.textContent = 'Sign in with Passkey';
+      return;
+    }
+
+    const { session_id, user_id, options } = await beginResp.json();
+
+    // Decode base64url strings to ArrayBuffer for the browser's WebAuthn API
+    options.publicKey.challenge = base64urlToBuffer(options.publicKey.challenge);
+    if (options.publicKey.allowCredentials) {
+      for (const cred of options.publicKey.allowCredentials) {
+        cred.id = base64urlToBuffer(cred.id);
+      }
+    }
+
+    const credential = await navigator.credentials.get(options);
+
+    const finishResp = await fetch('/login/finish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id, ...loginCredToJSON(credential) }),
+    });
+
+    if (!finishResp.ok) {
+      const err = await finishResp.json();
+      alert('Error: ' + (err.error || 'Failed to verify sign in'));
+      btn.disabled = false;
+      btn.textContent = 'Sign in with Passkey';
+      return;
+    }
+
+    window.location.href = '/';
+  } catch (e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Sign in with Passkey';
+  }
+}
+</script>
+{{end}}

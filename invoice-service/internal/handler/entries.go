@@ -7,19 +7,20 @@ import (
 )
 
 func (a *App) entriesPage(w http.ResponseWriter, r *http.Request) {
-	entries, err := a.store.ListEntries()
+	store := StoreFromContext(r.Context())
+	entries, err := store.ListEntries()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list entries", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	categories, err := a.store.ListCategories()
+	categories, err := store.ListCategories()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list categories", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.renderPage(w, http.StatusOK, "entries.html", EntriesPageData{
+	a.renderPage(w, r, http.StatusOK, "entries.html", EntriesPageData{
 		Entries:    entries,
 		Categories: categories,
 		Notice:     noticeFromRequest(r),
@@ -27,6 +28,7 @@ func (a *App) entriesPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) createEntry(w http.ResponseWriter, r *http.Request) {
+	store := StoreFromContext(r.Context())
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
@@ -51,7 +53,7 @@ func (a *App) createEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.store.CreateEntry(date, category, hours, strings.TrimSpace(r.FormValue("notes"))); err != nil {
+	if err := store.CreateEntry(date, category, hours, strings.TrimSpace(r.FormValue("notes"))); err != nil {
 		LoggerFromContext(r.Context()).Error("create entry", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -61,12 +63,13 @@ func (a *App) createEntry(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) editEntryForm(w http.ResponseWriter, r *http.Request) {
+	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
 		http.Error(w, "invalid entry id", http.StatusBadRequest)
 		return
 	}
-	entry, err := a.store.GetEntry(id)
+	entry, err := store.GetEntry(id)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("get entry for edit", "entry_id", id, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -76,6 +79,7 @@ func (a *App) editEntryForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) updateEntry(w http.ResponseWriter, r *http.Request) {
+	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
 		http.Error(w, "invalid entry id", http.StatusBadRequest)
@@ -103,13 +107,13 @@ func (a *App) updateEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.store.UpdateEntry(id, date, category, hours, strings.TrimSpace(r.FormValue("notes"))); err != nil {
+	if err := store.UpdateEntry(id, date, category, hours, strings.TrimSpace(r.FormValue("notes"))); err != nil {
 		LoggerFromContext(r.Context()).Error("update entry", "entry_id", id, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	entries, err := a.store.ListEntries()
+	entries, err := store.ListEntries()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list entries after update", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -119,7 +123,8 @@ func (a *App) updateEntry(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) entriesTable(w http.ResponseWriter, r *http.Request) {
-	entries, err := a.store.ListEntries()
+	store := StoreFromContext(r.Context())
+	entries, err := store.ListEntries()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list entries table", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -129,12 +134,13 @@ func (a *App) entriesTable(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) deleteEntry(w http.ResponseWriter, r *http.Request) {
+	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
 		http.Error(w, "invalid entry id", http.StatusBadRequest)
 		return
 	}
-	if err := a.store.DeleteEntry(id); err != nil {
+	if err := store.DeleteEntry(id); err != nil {
 		LoggerFromContext(r.Context()).Error("delete entry", "entry_id", id, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -145,7 +151,7 @@ func (a *App) deleteEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries, err := a.store.ListEntries()
+	entries, err := store.ListEntries()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list entries after delete", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

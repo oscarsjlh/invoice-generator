@@ -1,6 +1,10 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strconv"
+	"time"
+)
 
 type Config struct {
 	Address        string
@@ -18,6 +22,16 @@ type Config struct {
 	DefaultDueDays int
 	LogLevel       string
 	LogFormat      string
+
+	// Auth configuration
+	AuthEnabled       bool
+	AuthDBPath        string
+	AuthMigrationsDir string
+	UserDBDir         string
+	WebAuthnRPID      string
+	WebAuthnRPOrigins []string
+	WebAuthnRPDisplay string
+	SessionTTL        time.Duration
 }
 
 func Load() Config {
@@ -36,6 +50,15 @@ func Load() Config {
 		OCRUploadDir:  getenv("OCR_UPLOAD_DIR", "data/ocr-uploads"),
 		LogLevel:      getenv("LOG_LEVEL", "info"),
 		LogFormat:     getenv("LOG_FORMAT", "json"),
+
+		AuthEnabled:       getenv("AUTH_ENABLED", "") != "false",
+		AuthDBPath:        getenv("AUTH_DB_PATH", "data/auth.db"),
+		AuthMigrationsDir: getenv("AUTH_MIGRATIONS_DIR", "auth-migrations"),
+		UserDBDir:         getenv("USER_DB_DIR", "data/users"),
+		WebAuthnRPID:      getenv("WEB_AUTHN_RP_ID", "localhost"),
+		WebAuthnRPOrigins: getenvSlice("WEB_AUTHN_RP_ORIGINS", []string{"http://localhost:8080"}),
+		WebAuthnRPDisplay: getenv("WEB_AUTHN_RP_DISPLAY", "Invoice App"),
+		SessionTTL:        getenvDuration("SESSION_TTL", 24*time.Hour),
 	}
 }
 
@@ -44,4 +67,24 @@ func getenv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func getenvSlice(key string, fallback []string) []string {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	return []string{value}
+}
+
+func getenvDuration(key string, fallback time.Duration) time.Duration {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	d, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return fallback
+	}
+	return time.Duration(d) * time.Second
 }
