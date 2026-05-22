@@ -29,6 +29,7 @@ func (a *App) ocrUploadPage(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		Sessions []db.OCRSession
 		Notice   string
+		User     *db.User
 	}{
 		Sessions: sessions,
 		Notice:   noticeFromRequest(r),

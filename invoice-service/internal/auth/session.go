@@ -13,33 +13,33 @@ import (
 const sessionCookieName = "invoice_session"
 
 type SessionManager struct {
-	authDB *db.AuthDB
-	ttl    time.Duration
-	secure bool
+	authDB       *db.AuthDB
+	ttl          time.Duration
+	trustedProxy bool
 }
 
-func NewSessionManager(authDB *db.AuthDB, ttl time.Duration, secure bool) *SessionManager {
-	return &SessionManager{authDB: authDB, ttl: ttl, secure: secure}
+func NewSessionManager(authDB *db.AuthDB, ttl time.Duration, trustedProxy bool) *SessionManager {
+	return &SessionManager{authDB: authDB, ttl: ttl, trustedProxy: trustedProxy}
 }
 
-func (sm *SessionManager) CreateSession(w http.ResponseWriter, userID int64) error {
+func (sm *SessionManager) CreateSession(w http.ResponseWriter, r *http.Request, userID int64) error {
 	token, err := sm.authDB.CreateSession(userID, sm.ttl)
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
 
+	secure := sm.isSecure(r)
 	encoded := base64.RawURLEncoding.EncodeToString(token)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    encoded,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   sm.secure,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(sm.ttl.Seconds()),
 	})
 
-	// set a non-HttpOnly CSRF cookie for double-submit validation on forms
 	csrf := make([]byte, 16)
 	if _, err := rand.Read(csrf); err == nil {
 		http.SetCookie(w, &http.Cookie{
@@ -47,7 +47,7 @@ func (sm *SessionManager) CreateSession(w http.ResponseWriter, userID int64) err
 			Value:    base64.RawURLEncoding.EncodeToString(csrf),
 			Path:     "/",
 			HttpOnly: false,
-			Secure:   sm.secure,
+			Secure:   secure,
 			SameSite: http.SameSiteLaxMode,
 			MaxAge:   int(sm.ttl.Seconds()),
 		})
@@ -82,24 +82,34 @@ func (sm *SessionManager) DestroySession(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
+	secure := sm.isSecure(r)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   sm.secure,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
-	// clear csrf cookie
 	http.SetCookie(w, &http.Cookie{
 		Name:     "csrf_token",
 		Value:    "",
 		Path:     "/",
 		HttpOnly: false,
-		Secure:   sm.secure,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
 	return nil
+}
+
+func (sm *SessionManager) isSecure(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	if sm.trustedProxy && r.Header.Get("X-Forwarded-Proto") == "https" {
+		return true
+	}
+	return false
 }

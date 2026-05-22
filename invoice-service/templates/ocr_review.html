@@ -30,6 +30,7 @@
   <h2>Extracted Entries</h2>
   {{if .Drafts}}
   <form method="post" action="/ocr/import/{{.Session.ID}}/confirm">
+    <input type="hidden" name="csrf_token" value="">
     <figure>
       <table>
         <thead>

@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -51,14 +50,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		secureCookies := true
-		for _, o := range cfg.WebAuthnRPOrigins {
-			if strings.HasPrefix(o, "http://") {
-				secureCookies = false
-				break
-			}
-		}
-		sessionManager = auth.NewSessionManager(authDB, cfg.SessionTTL, secureCookies)
+		sessionManager = auth.NewSessionManager(authDB, cfg.SessionTTL, cfg.TrustedProxy)
 	}
 
 	multiStore := db.NewMultiStore(cfg.UserDBDir, cfg.MigrationsDir)
@@ -82,6 +74,28 @@ func main() {
 
 	if !cfg.AuthEnabled {
 		app.SetLegacyStore(legacyStore)
+	}
+
+	// Start periodic session cleanup (hourly)
+	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
+	defer cleanupCancel()
+	if authDB != nil {
+		go func() {
+			ticker := time.NewTicker(1 * time.Hour)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					if err := authDB.CleanupExpiredSessions(); err != nil {
+						logger.Warn("session cleanup failed", "error", err)
+					} else {
+						logger.Debug("session cleanup complete")
+					}
+				case <-cleanupCtx.Done():
+					return
+				}
+			}
+		}()
 	}
 
 	server := &http.Server{

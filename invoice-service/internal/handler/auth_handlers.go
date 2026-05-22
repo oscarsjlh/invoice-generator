@@ -82,7 +82,7 @@ func (a *App) finishRegistration(w http.ResponseWriter, r *http.Request) {
 
 	_ = credential
 
-	if err := a.sessions.CreateSession(w, userID); err != nil {
+	if err := a.sessions.CreateSession(w, r, userID); err != nil {
 		a.logger.Error("create session after registration", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -141,7 +141,7 @@ func (a *App) finishLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.sessions.CreateSession(w, userID); err != nil {
+	if err := a.sessions.CreateSession(w, r, userID); err != nil {
 		a.logger.Error("create session after login", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

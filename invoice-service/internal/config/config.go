@@ -32,6 +32,7 @@ type Config struct {
 	WebAuthnRPOrigins []string
 	WebAuthnRPDisplay string
 	SessionTTL        time.Duration
+	TrustedProxy      bool
 }
 
 func Load() Config {
@@ -59,6 +60,7 @@ func Load() Config {
 		WebAuthnRPOrigins: getenvSlice("WEB_AUTHN_RP_ORIGINS", []string{"http://localhost:8080"}),
 		WebAuthnRPDisplay: getenv("WEB_AUTHN_RP_DISPLAY", "Invoice App"),
 		SessionTTL:        getenvDuration("SESSION_TTL", 24*time.Hour),
+		TrustedProxy:      getenv("TRUSTED_PROXY", "") == "true",
 	}
 }
 

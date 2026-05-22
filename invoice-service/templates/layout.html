@@ -114,7 +114,6 @@
       </ul>
     </nav>
     <script>
-      // populate CSRF hidden inputs using csrf_token cookie (double-submit pattern)
       (function(){
         function cookieValue(name) {
           const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
@@ -125,6 +124,13 @@
           const els = document.querySelectorAll('input[name="csrf_token"]');
           for (const el of els) el.value = token;
         }
+
+        document.body.addEventListener('htmx:configRequest', function(evt) {
+          const csrf = cookieValue('csrf_token');
+          if (csrf) {
+            evt.detail.headers['X-CSRF-Token'] = csrf;
+          }
+        });
       })();
     </script>
     {{block "content" .}}{{end}}

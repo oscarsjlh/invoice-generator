@@ -273,7 +273,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("POST /ocr/import/{id}/confirm", a.ocrConfirmDrafts)
 	mux.HandleFunc("POST /ocr/import/{id}/delete", a.ocrDeleteSession)
 
-	return recoverMiddleware(RequestLoggingMiddleware()(LoggerMiddleware(a.logger)(a.authMiddleware(mux))))
+	return recoverMiddleware(SecurityHeadersMiddleware()(RequestLoggingMiddleware()(LoggerMiddleware(a.logger)(a.authMiddleware(CSRFMiddleware()(mux))))))
 }
 
 // publicPaths are paths that do not require authentication.
