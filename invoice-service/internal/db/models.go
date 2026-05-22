@@ -99,6 +99,7 @@ type DraftReviewData struct {
 	Drafts     []OCRDraftEntry
 	Categories []string
 	Notice     string
+	User       *User
 }
 
 type Settings struct {

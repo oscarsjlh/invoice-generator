@@ -28,7 +28,7 @@ func (sm *SessionManager) CreateSession(w http.ResponseWriter, r *http.Request, 
 		return fmt.Errorf("create session: %w", err)
 	}
 
-	secure := sm.isSecure(r)
+	secure := sm.IsSecure(r)
 	encoded := base64.RawURLEncoding.EncodeToString(token)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
@@ -82,7 +82,7 @@ func (sm *SessionManager) DestroySession(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	secure := sm.isSecure(r)
+	secure := sm.IsSecure(r)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
@@ -104,7 +104,7 @@ func (sm *SessionManager) DestroySession(w http.ResponseWriter, r *http.Request)
 	return nil
 }
 
-func (sm *SessionManager) isSecure(r *http.Request) bool {
+func (sm *SessionManager) IsSecure(r *http.Request) bool {
 	if r.TLS != nil {
 		return true
 	}

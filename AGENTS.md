@@ -87,8 +87,8 @@ All config is via env vars (no `.env` file loading):
 | `OCR_ENABLED` | `false` | Set to `true` to enable OCR import routes |
 | `OCR_SERVICE_URL` | (empty) | OCR service endpoint (e.g., `http://localhost:8000`) |
 | `OCR_UPLOAD_DIR` | `data/ocr-uploads` | Directory for uploaded images |
-| `BEDROCK_REGION` | `us-east-1` | AWS region for Bedrock (OCR service only) |
-| `BEDROCK_MODEL` | `us.anthropic.claude-3-5-haiku-20241022-v1:0` | Bedrock model ID (OCR service only) |
+| `BEDROCK_REGION` | `eu-west-2` | AWS region for Bedrock (OCR service only) |
+| `BEDROCK_MODEL` | `qwen.qwen3-vl-235b-a22b` | Bedrock model ID (OCR service only) |
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `LOG_FORMAT` | `json` | Log format: `json` (structured) or `text` (human-readable) |
 | `AUTH_ENABLED` | `true` | Set to `false` to disable auth and use legacy single-user mode |

@@ -234,12 +234,24 @@ func (a *App) buildPDF(invoice db.Invoice, settings db.Settings) ([]byte, error)
 
 	street, city, postalCode := parseAddress(invoice.BusinessAddress)
 
-	customerStreet, customerCity, customerPostalCode := parseAddress(settings.CustomerAddress)
+	parsedCustomerStreet, parsedCustomerCity, parsedCustomerPostalCode := parseAddress(settings.CustomerAddress)
+
+	customerStreet := parsedCustomerStreet
 	if customerStreet == "" {
 		customerStreet = street
 	}
+
+	customerCity := settings.CustomerCity
+	if customerCity == "" {
+		customerCity = parsedCustomerCity
+	}
 	if customerCity == "" {
 		customerCity = city
+	}
+
+	customerPostalCode := settings.CustomerPostalCode
+	if customerPostalCode == "" {
+		customerPostalCode = parsedCustomerPostalCode
 	}
 	if customerPostalCode == "" {
 		customerPostalCode = postalCode
