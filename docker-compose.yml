@@ -9,8 +9,18 @@ services:
       - ./data:/app/data
     environment:
       OCR_ENABLED: "true"
+      AUTH_ENABLED: "false"
       OCR_SERVICE_URL: "http://ocr-service:8000"
       OCR_UPLOAD_DIR: "/app/data/ocr-uploads"
+      AUTH_DB_PATH: "/app/data/auth.db"
+      USER_DB_DIR: "/app/data/users"
+      MIGRATIONS_DIR: "/app/migrations"
+      AUTH_MIGRATIONS_DIR: "/app/auth-migrations"
+      WEB_AUTHN_RP_ID: "localhost"
+      WEB_AUTHN_RP_ORIGINS: "http://localhost:8080"
+      WEB_AUTHN_RP_DISPLAY: "Invoice App"
+      LOG_LEVEL: "info"
+      LOG_FORMAT: "json"
     restart: unless-stopped
 
   ocr-service:

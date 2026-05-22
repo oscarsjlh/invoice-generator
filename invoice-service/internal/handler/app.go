@@ -1,28 +1,61 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"invoice-app/internal/auth"
 	"invoice-app/internal/config"
 	"invoice-app/internal/db"
 	"invoice-app/static"
 	"invoice-app/templates"
 )
 
+const (
+	contextKeyStore contextKey = "store"
+	contextKeyUser  contextKey = "user"
+)
+
+func StoreFromContext(ctx context.Context) db.Storer {
+	s, _ := ctx.Value(contextKeyStore).(db.Storer)
+	return s
+}
+
+func UserFromContext(ctx context.Context) *db.User {
+	u, _ := ctx.Value(contextKeyUser).(*db.User)
+	return u
+}
+
+// WithTestStore returns a context with the given Storer attached, for use in tests.
+func WithTestStore(ctx context.Context, store db.Storer) context.Context {
+	return context.WithValue(ctx, contextKeyStore, store)
+}
+
+// StoreForTest returns the multi-store for test setup.
+func (a *App) StoreForTest() *db.MultiStore {
+	return a.multiStore
+}
+
 type App struct {
-	store    db.Storer
-	cfg      config.Config
-	logger   *slog.Logger
-	baseTmpl *template.Template
-	ocrWg    sync.WaitGroup
+	multiStore  *db.MultiStore
+	authDB      *db.AuthDB
+	webAuthn    *auth.WebAuthnManager
+	sessions    *auth.SessionManager
+	cfg         config.Config
+	logger      *slog.Logger
+	baseTmpl    *template.Template
+	ocrWg       sync.WaitGroup
+	authEnabled bool
+	legacyStore *db.Store
 }
 
 type DashboardPageData struct {
@@ -35,6 +68,7 @@ type DashboardPageData struct {
 	TotalHours     float64
 	TotalAmount    float64
 	Notice         string
+	User           *db.User
 }
 
 type EntriesPageData struct {
@@ -42,12 +76,14 @@ type EntriesPageData struct {
 	Categories []string
 	Notice     string
 	Form       db.Entry
+	User       *db.User
 }
 
 type RatesPageData struct {
 	Rates  []db.Rate
 	Notice string
 	Form   db.Rate
+	User   *db.User
 }
 
 type InvoicesPageData struct {
@@ -58,34 +94,57 @@ type InvoicesPageData struct {
 	DefaultInvoiceDate string
 	DefaultDueDays     int
 	SelectedCategory   string
+	User               *db.User
 }
 
 type SettingsPageData struct {
 	Settings db.Settings
 	Notice   string
+	User     *db.User
 }
 
 type InvoicePreviewPageData struct {
 	Invoice db.Invoice
 	Notice  string
+	User    *db.User
 }
 
-func New(store *db.Store, cfg config.Config, logger *slog.Logger) *App {
-	app := &App{store: store, cfg: cfg, logger: logger}
+type LoginPageData struct {
+	Notice string
+	User   *db.User
+}
+
+type RegisterPageData struct {
+	Notice string
+	User   *db.User
+}
+
+func New(multiStore *db.MultiStore, authDB *db.AuthDB, webAuthn *auth.WebAuthnManager, sessions *auth.SessionManager, cfg config.Config, logger *slog.Logger) *App {
+	app := &App{
+		multiStore:  multiStore,
+		authDB:      authDB,
+		webAuthn:    webAuthn,
+		sessions:    sessions,
+		cfg:         cfg,
+		logger:      logger,
+		authEnabled: cfg.AuthEnabled,
+	}
 	app.baseTmpl = app.compileTemplates()
 	return app
 }
 
 func (a *App) compileTemplates() *template.Template {
 	funcMap := template.FuncMap{
-		"money":     money,
-		"numfmt":    numfmt,
-		"dateLabel": dateLabel,
-		"selected":  selected,
-		"monthName": monthName,
-		"mul":       func(a float64, b float64) float64 { return a * b },
-		"divf":      func(a float64, b float64) float64 { return a / b },
-		"div":       func(a, b int64) int64 { return a / b },
+		"money":       money,
+		"numfmt":      numfmt,
+		"dateLabel":   dateLabel,
+		"selected":    selected,
+		"monthName":   monthName,
+		"mul":         func(a float64, b float64) float64 { return a * b },
+		"divf":        func(a float64, b float64) float64 { return a / b },
+		"div":         func(a, b int64) int64 { return a / b },
+		"authEnabled": func() bool { return a.authEnabled },
+		"ocrEnabled":  func() bool { return a.cfg.OCREnabled },
 	}
 
 	tmpl, err := template.New("").Funcs(funcMap).ParseFS(templates.FS, "layout.html")
@@ -96,12 +155,15 @@ func (a *App) compileTemplates() *template.Template {
 	return tmpl
 }
 
-// WaitForOCR blocks until all background OCR processing goroutines complete.
 func (a *App) WaitForOCR() {
 	a.ocrWg.Wait()
 }
 
-func (a *App) renderPage(w http.ResponseWriter, status int, page string, data any, extra ...string) {
+func (a *App) SetLegacyStore(store *db.Store) {
+	a.legacyStore = store
+}
+
+func (a *App) renderPage(w http.ResponseWriter, r *http.Request, status int, page string, data any, extra ...string) {
 	files := append([]string{"layout.html"}, extra...)
 	files = append(files, page)
 
@@ -115,11 +177,41 @@ func (a *App) renderPage(w http.ResponseWriter, status int, page string, data an
 		return
 	}
 
+	data = injectUser(data, UserFromContext(r.Context()))
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if err := tmpl.ExecuteTemplate(w, "layout", data); err != nil {
 		http.Error(w, fmt.Sprintf("execute template: %v", err), http.StatusInternalServerError)
 	}
+}
+
+func injectUser(data any, user *db.User) any {
+	v := reflect.ValueOf(data)
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return data
+		}
+		elem := v.Elem()
+		if elem.Kind() == reflect.Struct {
+			f := elem.FieldByName("User")
+			if f.IsValid() && f.CanSet() && f.Type() == reflect.TypeOf(user) {
+				f.Set(reflect.ValueOf(user))
+			}
+		}
+		return data
+	}
+
+	if v.Kind() == reflect.Struct {
+		ptr := reflect.New(v.Type())
+		ptr.Elem().Set(v)
+		f := ptr.Elem().FieldByName("User")
+		if f.IsValid() && f.CanSet() && f.Type() == reflect.TypeOf(user) {
+			f.Set(reflect.ValueOf(user))
+		}
+		return ptr.Interface()
+	}
+	return data
 }
 
 func (a *App) renderPartial(w http.ResponseWriter, status int, name string, data any, files ...string) {
@@ -140,13 +232,21 @@ func (a *App) renderPartial(w http.ResponseWriter, status int, name string, data
 	}
 }
 
-// StoreForTest returns the underlying store for testing purposes.
-func (a *App) StoreForTest() db.Storer {
-	return a.store
-}
-
 func (a *App) Routes() http.Handler {
 	mux := http.NewServeMux()
+
+	if a.authEnabled {
+		mux.HandleFunc("GET /login", a.loginPage)
+		mux.HandleFunc("POST /login/begin", a.beginLogin)
+		mux.HandleFunc("POST /login/finish", a.finishLogin)
+		mux.HandleFunc("GET /register", a.registerPage)
+		mux.HandleFunc("POST /register/begin", a.beginRegistration)
+		mux.HandleFunc("POST /register/finish", a.finishRegistration)
+		mux.HandleFunc("POST /logout", a.logout)
+	}
+	mux.HandleFunc("GET /static/", func(w http.ResponseWriter, r *http.Request) {
+		http.StripPrefix("/static/", http.FileServerFS(static.FS)).ServeHTTP(w, r)
+	})
 	mux.HandleFunc("GET /", a.dashboard)
 	mux.HandleFunc("GET /entries", a.entriesPage)
 	mux.HandleFunc("GET /entries/table", a.entriesTable)
@@ -172,10 +272,57 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("GET /ocr/import/{id}", a.ocrSessionStatus)
 	mux.HandleFunc("POST /ocr/import/{id}/confirm", a.ocrConfirmDrafts)
 	mux.HandleFunc("POST /ocr/import/{id}/delete", a.ocrDeleteSession)
-	mux.HandleFunc("GET /static/", func(w http.ResponseWriter, r *http.Request) {
-		http.StripPrefix("/static/", http.FileServerFS(static.FS)).ServeHTTP(w, r)
+
+	return recoverMiddleware(SecurityHeadersMiddleware()(RequestLoggingMiddleware()(LoggerMiddleware(a.logger)(a.authMiddleware(CSRFMiddleware()(mux))))))
+}
+
+// publicPaths are paths that do not require authentication.
+var publicPaths = []string{"/login", "/register", "/static/"}
+
+func isPublicPath(path string) bool {
+	for _, p := range publicPaths {
+		if path == p || strings.HasPrefix(path, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *App) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !a.authEnabled {
+			if a.legacyStore == nil {
+				http.Error(w, "auth disabled but no legacy store configured", http.StatusInternalServerError)
+				return
+			}
+			ctx := context.WithValue(r.Context(), contextKeyStore, a.legacyStore)
+			ctx = context.WithValue(ctx, contextKeyUser, &db.User{ID: 0, Username: "anonymous", DisplayName: "Anonymous"})
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
+		if isPublicPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		user, err := a.sessions.GetUserFromRequest(r)
+		if err != nil || user == nil {
+			a.redirect(w, r, "/login", "Please sign in")
+			return
+		}
+
+		store, err := a.multiStore.ForUser(user.ID)
+		if err != nil {
+			a.logger.Error("open user database", "user_id", user.ID, "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), contextKeyStore, store)
+		ctx = context.WithValue(ctx, contextKeyUser, user)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
-	return recoverMiddleware(RequestLoggingMiddleware()(LoggerMiddleware(a.logger)(mux)))
 }
 
 func (a *App) redirect(w http.ResponseWriter, r *http.Request, path string, notice string) {
@@ -308,8 +455,6 @@ func monthName(value string) string {
 	return value
 }
 
-// sanitizeHeaderValue strips control characters (CR, LF, NUL) from a string
-// to prevent HTTP header injection.
 func sanitizeHeaderValue(value string) string {
 	return strings.Map(func(r rune) rune {
 		if r == '\r' || r == '\n' || r == 0 {
@@ -319,7 +464,6 @@ func sanitizeHeaderValue(value string) string {
 	}, value)
 }
 
-// recoverMiddleware recovers from panics and returns a 500 error.
 func recoverMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {

@@ -17,26 +17,27 @@ import (
 )
 
 func (a *App) invoicesPage(w http.ResponseWriter, r *http.Request) {
-	invoices, err := a.store.ListInvoices()
+	store := StoreFromContext(r.Context())
+	invoices, err := store.ListInvoices()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list invoices", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	categories, err := a.store.ListCategories()
+	categories, err := store.ListCategories()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list categories", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	settings, err := a.store.LoadSettings()
+	settings, err := store.LoadSettings()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("load settings", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	now := time.Now()
-	a.renderPage(w, http.StatusOK, "invoices.html", InvoicesPageData{
+	a.renderPage(w, r, http.StatusOK, "invoices.html", InvoicesPageData{
 		Invoices:           invoices,
 		Categories:         categories,
 		Notice:             noticeFromRequest(r),
@@ -48,6 +49,7 @@ func (a *App) invoicesPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) generateInvoice(w http.ResponseWriter, r *http.Request) {
+	store := StoreFromContext(r.Context())
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
@@ -69,7 +71,7 @@ func (a *App) generateInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := a.store.LoadSettings()
+	settings, err := store.LoadSettings()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("load settings for invoice generation", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -77,7 +79,7 @@ func (a *App) generateInvoice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	category := normalizeCategory(r.FormValue("category"))
-	invoiceID, err := a.store.GenerateInvoice(month, category, invoiceDate, dueDays, settings)
+	invoiceID, err := store.GenerateInvoice(month, category, invoiceDate, dueDays, settings)
 	if err != nil {
 		LoggerFromContext(r.Context()).Warn("generate invoice", "month", month, "category", category, "error", err)
 		a.redirect(w, r, "/invoices", fmt.Sprintf("Could not generate invoice: %v", err))
@@ -89,12 +91,13 @@ func (a *App) generateInvoice(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) invoicePreview(w http.ResponseWriter, r *http.Request) {
+	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
 		http.Error(w, "invalid invoice id", http.StatusBadRequest)
 		return
 	}
-	invoice, err := a.store.GetInvoice(id)
+	invoice, err := store.GetInvoice(id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.NotFound(w, r)
@@ -104,19 +107,20 @@ func (a *App) invoicePreview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.renderPage(w, http.StatusOK, "invoice_preview_page.html", InvoicePreviewPageData{
+	a.renderPage(w, r, http.StatusOK, "invoice_preview_page.html", InvoicePreviewPageData{
 		Invoice: invoice,
 		Notice:  noticeFromRequest(r),
 	}, "invoice_preview_fragment.html", "invoice_preview_page.html")
 }
 
 func (a *App) invoicePDF(w http.ResponseWriter, r *http.Request) {
+	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
 		http.Error(w, "invalid invoice id", http.StatusBadRequest)
 		return
 	}
-	invoice, err := a.store.GetInvoice(id)
+	invoice, err := store.GetInvoice(id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.NotFound(w, r)
@@ -127,7 +131,12 @@ func (a *App) invoicePDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pdfData, err := a.buildPDF(invoice)
+	settings, sErr := store.LoadSettings()
+	if sErr != nil {
+		LoggerFromContext(r.Context()).Error("load settings for pdf", "error", sErr)
+	}
+
+	pdfData, err := a.buildPDF(invoice, settings)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("generate pdf", "invoice_id", id, "invoice_number", invoice.InvoiceNumber, "error", err)
 		http.Error(w, fmt.Sprintf("generate pdf: %v", err), http.StatusInternalServerError)
@@ -141,12 +150,13 @@ func (a *App) invoicePDF(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) sendInvoice(w http.ResponseWriter, r *http.Request) {
+	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
 		http.Error(w, "invalid invoice id", http.StatusBadRequest)
 		return
 	}
-	invoice, err := a.store.GetInvoice(id)
+	invoice, err := store.GetInvoice(id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.NotFound(w, r)
@@ -157,7 +167,7 @@ func (a *App) sendInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := a.store.LoadSettings()
+	settings, err := store.LoadSettings()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("load settings for send", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -182,7 +192,7 @@ func (a *App) sendInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pdfData, err := a.buildPDF(invoice)
+	pdfData, err := a.buildPDF(invoice, settings)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("generate pdf for send", "invoice_id", id, "invoice_number", invoice.InvoiceNumber, "error", err)
 		a.redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), fmt.Sprintf("Generate PDF failed: %v", err))
@@ -210,7 +220,7 @@ func (a *App) sendInvoice(w http.ResponseWriter, r *http.Request) {
 	a.redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), fmt.Sprintf("Invoice sent to %s", settings.CustomerEmail))
 }
 
-func (a *App) buildPDF(invoice db.Invoice) ([]byte, error) {
+func (a *App) buildPDF(invoice db.Invoice, settings db.Settings) ([]byte, error) {
 	tmpDir, err := os.MkdirTemp("", "typst-invoice-*")
 	if err != nil {
 		return nil, fmt.Errorf("create temp dir: %w", err)
@@ -222,14 +232,7 @@ func (a *App) buildPDF(invoice db.Invoice) ([]byte, error) {
 		return nil, fmt.Errorf("read typst template: %w", err)
 	}
 
-	// Parse business address into components
 	street, city, postalCode := parseAddress(invoice.BusinessAddress)
-
-	// Load settings for customer info
-	settings, err := a.store.LoadSettings()
-	if err != nil {
-		a.logger.Error("load settings for pdf", "error", err)
-	}
 
 	customerStreet, customerCity, customerPostalCode := parseAddress(settings.CustomerAddress)
 	if customerStreet == "" {

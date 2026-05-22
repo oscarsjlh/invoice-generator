@@ -19,7 +19,8 @@ func (a *App) ocrUploadPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessions, err := a.store.ListOCRSessions()
+	store := StoreFromContext(r.Context())
+	sessions, err := store.ListOCRSessions()
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -28,12 +29,13 @@ func (a *App) ocrUploadPage(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		Sessions []db.OCRSession
 		Notice   string
+		User     *db.User
 	}{
 		Sessions: sessions,
 		Notice:   noticeFromRequest(r),
 	}
 
-	a.renderPage(w, http.StatusOK, "ocr_upload.html", data)
+	a.renderPage(w, r, http.StatusOK, "ocr_upload.html", data)
 }
 
 func (a *App) ocrStartSession(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +43,8 @@ func (a *App) ocrStartSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "OCR import is not enabled", http.StatusNotFound)
 		return
 	}
+
+	store := StoreFromContext(r.Context())
 
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		http.Error(w, "form too large", http.StatusBadRequest)
@@ -58,7 +62,7 @@ func (a *App) ocrStartSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessionID, err := a.store.CreateOCRSession()
+	sessionID, err := store.CreateOCRSession()
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -68,7 +72,7 @@ func (a *App) ocrStartSession(w http.ResponseWriter, r *http.Request) {
 	cleanupNeeded := true
 	defer func() {
 		if cleanupNeeded {
-			a.store.DeleteOCRSession(sessionID)
+			store.DeleteOCRSession(sessionID)
 			for _, f := range uploadedFiles {
 				os.Remove(f)
 				os.Remove(f + ".processed.jpg")
@@ -122,7 +126,7 @@ func (a *App) ocrStartSession(w http.ResponseWriter, r *http.Request) {
 			size = info.Size()
 		}
 
-		if err := a.store.AddSessionImage(sessionID, header.Filename, processedPath, size); err != nil {
+		if err := store.AddSessionImage(sessionID, header.Filename, processedPath, size); err != nil {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -130,14 +134,17 @@ func (a *App) ocrStartSession(w http.ResponseWriter, r *http.Request) {
 		uploadedFiles = append(uploadedFiles, savedPath)
 	}
 
-	if err := a.store.UpdateOCRSessionState(sessionID, "uploaded", ""); err != nil {
+	if err := store.UpdateOCRSessionState(sessionID, "uploaded", ""); err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	if a.cfg.OCRServiceURL != "" {
-		a.ocrWg.Add(1)
-		go a.processOCRSession(sessionID)
+		user := UserFromContext(r.Context())
+		if user != nil {
+			a.ocrWg.Add(1)
+			go a.processOCRSession(sessionID, user.ID)
+		}
 	}
 
 	cleanupNeeded = false
@@ -150,31 +157,33 @@ func (a *App) ocrSessionStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	store := StoreFromContext(r.Context())
+
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
 		http.Error(w, "invalid session id", http.StatusBadRequest)
 		return
 	}
 
-	session, err := a.store.GetOCRSession(id)
+	session, err := store.GetOCRSession(id)
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	images, err := a.store.GetSessionImages(id)
+	images, err := store.GetSessionImages(id)
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	drafts, err := a.store.GetDraftEntries(id)
+	drafts, err := store.GetDraftEntries(id)
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	categories, err := a.store.ListCategories()
+	categories, err := store.ListCategories()
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -188,7 +197,7 @@ func (a *App) ocrSessionStatus(w http.ResponseWriter, r *http.Request) {
 		Notice:     noticeFromRequest(r),
 	}
 
-	a.renderPage(w, http.StatusOK, "ocr_review.html", data)
+	a.renderPage(w, r, http.StatusOK, "ocr_review.html", data)
 }
 
 func (a *App) ocrConfirmDrafts(w http.ResponseWriter, r *http.Request) {
@@ -196,6 +205,8 @@ func (a *App) ocrConfirmDrafts(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "OCR import is not enabled", http.StatusNotFound)
 		return
 	}
+
+	store := StoreFromContext(r.Context())
 
 	sessionID, err := parseInt64Path(r, "id")
 	if err != nil {
@@ -253,14 +264,14 @@ func (a *App) ocrConfirmDrafts(w http.ResponseWriter, r *http.Request) {
 
 	for _, id := range confirmedIDs {
 		if e, ok := edits[id]; ok {
-			if err := a.store.UpdateDraftEntry(id, e.date, e.category, e.hours, e.notes); err != nil {
+			if err := store.UpdateDraftEntry(id, e.date, e.category, e.hours, e.notes); err != nil {
 				http.Error(w, "Internal server error", http.StatusInternalServerError)
 				return
 			}
 		}
 	}
 
-	confirmed, skipped, err := a.store.ConfirmDraftEntries(sessionID, confirmedIDs)
+	confirmed, skipped, err := store.ConfirmDraftEntries(sessionID, confirmedIDs)
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -279,13 +290,15 @@ func (a *App) ocrDeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	store := StoreFromContext(r.Context())
+
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
 		http.Error(w, "invalid session id", http.StatusBadRequest)
 		return
 	}
 
-	images, _ := a.store.GetSessionImages(id)
+	images, _ := store.GetSessionImages(id)
 	for _, img := range images {
 		if img.FilePath != "" {
 			os.Remove(img.FilePath)
@@ -293,7 +306,7 @@ func (a *App) ocrDeleteSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := a.store.DeleteOCRSession(id); err != nil {
+	if err := store.DeleteOCRSession(id); err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -301,15 +314,21 @@ func (a *App) ocrDeleteSession(w http.ResponseWriter, r *http.Request) {
 	a.redirect(w, r, "/ocr/import", "Import session deleted")
 }
 
-func (a *App) processOCRSession(sessionID int64) {
+func (a *App) processOCRSession(sessionID int64, userID int64) {
 	defer a.ocrWg.Done()
-	if err := a.store.UpdateOCRSessionState(sessionID, "processing", ""); err != nil {
+
+	store, err := a.multiStore.ForUser(userID)
+	if err != nil {
 		return
 	}
 
-	images, err := a.store.GetSessionImages(sessionID)
+	if err := store.UpdateOCRSessionState(sessionID, "processing", ""); err != nil {
+		return
+	}
+
+	images, err := store.GetSessionImages(sessionID)
 	if err != nil {
-		a.store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("get images: %v", err))
+		store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("get images: %v", err))
 		return
 	}
 
@@ -318,15 +337,15 @@ func (a *App) processOCRSession(sessionID int64) {
 		imagePaths = append(imagePaths, img.FilePath)
 	}
 
-	categories, err := a.store.ListCategories()
+	categories, err := store.ListCategories()
 	if err != nil {
-		a.store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("list categories: %v", err))
+		store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("list categories: %v", err))
 		return
 	}
 
-	rates, err := a.store.ListRates()
+	rates, err := store.ListRates()
 	if err != nil {
-		a.store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("list rates: %v", err))
+		store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("list rates: %v", err))
 		return
 	}
 
@@ -356,7 +375,7 @@ func (a *App) processOCRSession(sessionID int64) {
 	}
 
 	if err != nil {
-		a.store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("OCR processing failed: %v", err))
+		store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("OCR processing failed: %v", err))
 		return
 	}
 
@@ -391,10 +410,10 @@ func (a *App) processOCRSession(sessionID int64) {
 		})
 	}
 
-	if err := a.store.SaveDraftEntries(sessionID, drafts); err != nil {
-		a.store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("save drafts: %v", err))
+	if err := store.SaveDraftEntries(sessionID, drafts); err != nil {
+		store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("save drafts: %v", err))
 		return
 	}
 
-	a.store.UpdateOCRSessionState(sessionID, "review_ready", "")
+	store.UpdateOCRSessionState(sessionID, "review_ready", "")
 }

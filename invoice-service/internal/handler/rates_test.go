@@ -8,22 +8,18 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"invoice-app/internal/config"
-	"invoice-app/internal/testutil"
 )
 
 func TestRatesPageReturns200(t *testing.T) {
 	t.Parallel()
-	store := testutil.NewTestDB(t)
-	cfg := config.Config{Address: ":8080", OCREnabled: false}
-	logger := NewLogger("info", "text")
-	app := New(store, cfg, logger)
+	ta := newTestApp(t)
 
 	req := httptest.NewRequest("GET", "/rates", nil)
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.ratesPage(w, req)
+	ta.app.ratesPage(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -33,10 +29,7 @@ func TestRatesPageReturns200(t *testing.T) {
 
 func TestCreateRateValid(t *testing.T) {
 	t.Parallel()
-	store := testutil.NewTestDB(t)
-	cfg := config.Config{Address: ":8080", OCREnabled: false}
-	logger := NewLogger("info", "text")
-	app := New(store, cfg, logger)
+	ta := newTestApp(t)
 
 	req := newFormRequest("/rates", urlencode(map[string]string{
 		"category":   "Consulting",
@@ -44,9 +37,11 @@ func TestCreateRateValid(t *testing.T) {
 		"end_date":   "",
 		"rate":       "150.00",
 	}))
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.createRate(w, req)
+	ta.app.createRate(w, req)
 
 	resp := w.Result()
 	body, _ := io.ReadAll(resp.Body)
@@ -58,19 +53,18 @@ func TestCreateRateValid(t *testing.T) {
 
 func TestCreateRateMissingCategory(t *testing.T) {
 	t.Parallel()
-	store := testutil.NewTestDB(t)
-	cfg := config.Config{Address: ":8080", OCREnabled: false}
-	logger := NewLogger("info", "text")
-	app := New(store, cfg, logger)
+	ta := newTestApp(t)
 
 	req := newFormRequest("/rates", urlencode(map[string]string{
 		"start_date": "2024-01-01",
 		"end_date":   "",
 		"rate":       "150.00",
 	}))
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.createRate(w, req)
+	ta.app.createRate(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
@@ -78,24 +72,22 @@ func TestCreateRateMissingCategory(t *testing.T) {
 
 func TestDeleteRate(t *testing.T) {
 	t.Parallel()
-	store := testutil.NewTestDB(t)
-	cfg := config.Config{Address: ":8080", OCREnabled: false}
-	logger := NewLogger("info", "text")
-	app := New(store, cfg, logger)
+	ta := newTestApp(t)
 
-	// Create a rate first
-	store.CreateRate("Consulting", "2024-01-01", "", 150.00)
+	ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00)
 
 	req := httptest.NewRequest("POST", "/rates/1/delete", nil)
+	req.SetPathValue("id", "1")
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.Routes().ServeHTTP(w, req)
+	ta.app.deleteRate(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
 
-	// Verify rate was deleted
-	rates, err := store.ListRates()
+	rates, err := ta.store.ListRates()
 	require.NoError(t, err)
 	assert.Empty(t, rates)
 }

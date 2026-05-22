@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"invoice-app/internal/auth"
 	"invoice-app/internal/config"
 	"invoice-app/internal/db"
 	"invoice-app/internal/handler"
@@ -18,19 +19,85 @@ func main() {
 
 	logger := handler.NewLogger(cfg.LogLevel, cfg.LogFormat)
 
-	store, err := db.Open(cfg.DatabasePath)
-	if err != nil {
-		logger.Error("open database", "error", err)
-		os.Exit(1)
-	}
-	defer store.Close()
+	var authDB *db.AuthDB
+	var webAuthn *auth.WebAuthnManager
+	var sessionManager *auth.SessionManager
 
-	if err := store.Migrate(cfg.MigrationsDir); err != nil {
-		logger.Error("run migrations", "error", err)
-		os.Exit(1)
+	if cfg.AuthEnabled {
+		var err error
+		authDB, err = db.OpenAuthDB(cfg.AuthDBPath)
+		if err != nil {
+			logger.Error("open auth database", "error", err)
+			os.Exit(1)
+		}
+		defer authDB.Close()
+
+		if err := authDB.Migrate(cfg.AuthMigrationsDir); err != nil {
+			logger.Error("run auth migrations", "error", err)
+			os.Exit(1)
+		}
+
+		webauthnCfg := auth.AuthConfig{
+			RPID:          cfg.WebAuthnRPID,
+			RPOrigins:     cfg.WebAuthnRPOrigins,
+			RPDisplayName: cfg.WebAuthnRPDisplay,
+			SessionTTL:    cfg.SessionTTL,
+		}
+
+		webAuthn, err = auth.NewWebAuthnManager(authDB, webauthnCfg)
+		if err != nil {
+			logger.Error("initialize WebAuthn", "error", err)
+			os.Exit(1)
+		}
+
+		sessionManager = auth.NewSessionManager(authDB, cfg.SessionTTL, cfg.TrustedProxy)
 	}
 
-	app := handler.New(store, cfg, logger)
+	multiStore := db.NewMultiStore(cfg.UserDBDir, cfg.MigrationsDir)
+
+	var legacyStore *db.Store
+	if !cfg.AuthEnabled {
+		var err error
+		legacyStore, err = db.Open(cfg.DatabasePath)
+		if err != nil {
+			logger.Error("open legacy database", "error", err)
+			os.Exit(1)
+		}
+		if err := legacyStore.Migrate(cfg.MigrationsDir); err != nil {
+			logger.Error("migrate legacy database", "error", err)
+			os.Exit(1)
+		}
+		multiStore.SetLegacyStore(legacyStore)
+	}
+
+	app := handler.New(multiStore, authDB, webAuthn, sessionManager, cfg, logger)
+
+	if !cfg.AuthEnabled {
+		app.SetLegacyStore(legacyStore)
+	}
+
+	// Start periodic session cleanup (hourly)
+	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
+	defer cleanupCancel()
+	if authDB != nil {
+		go func() {
+			ticker := time.NewTicker(1 * time.Hour)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					if err := authDB.CleanupExpiredSessions(); err != nil {
+						logger.Warn("session cleanup failed", "error", err)
+					} else {
+						logger.Debug("session cleanup complete")
+					}
+				case <-cleanupCtx.Done():
+					return
+				}
+			}
+		}()
+	}
+
 	server := &http.Server{
 		Addr:    cfg.Address,
 		Handler: app.Routes(),
@@ -57,5 +124,10 @@ func main() {
 	}
 
 	app.WaitForOCR()
+
+	if err := multiStore.Close(); err != nil {
+		logger.Error("close user databases", "error", err)
+	}
+
 	logger.Info("server_stopped")
 }

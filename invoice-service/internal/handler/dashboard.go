@@ -3,32 +3,33 @@ package handler
 import "net/http"
 
 func (a *App) dashboard(w http.ResponseWriter, r *http.Request) {
+	store := StoreFromContext(r.Context())
 	q := r.URL.Query()
 	year := q.Get("year")
 	month := q.Get("month")
 
-	years, err := a.store.ListAvailableYears()
+	years, err := store.ListAvailableYears()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list available years", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	months, err := a.store.ListAvailableMonths(year)
+	months, err := store.ListAvailableMonths(year)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list available months", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	summary, totalHours, totalAmount, err := a.store.FilteredSummary(year, month)
+	summary, totalHours, totalAmount, err := store.FilteredSummary(year, month)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("filtered summary", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	invoices, err := a.store.ListInvoices()
+	invoices, err := store.ListInvoices()
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list invoices for dashboard", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -38,7 +39,7 @@ func (a *App) dashboard(w http.ResponseWriter, r *http.Request) {
 		invoices = invoices[:8]
 	}
 
-	a.renderPage(w, http.StatusOK, "dashboard.html", DashboardPageData{
+	a.renderPage(w, r, http.StatusOK, "dashboard.html", DashboardPageData{
 		Summary:        summary,
 		RecentInvoices: invoices,
 		Years:          years,

@@ -14,6 +14,7 @@
   <article>
     <h2>Add Entry</h2>
     <form method="post" action="/entries">
+      <input type="hidden" name="csrf_token" value="">
       <label>
         Date
         <input type="date" name="date" required>
