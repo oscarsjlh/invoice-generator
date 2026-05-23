@@ -8,39 +8,39 @@
   --font-body: 'Karla', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
 
-  --bg:            #faf7f2;
+  --bg:            #eff1f5;
   --bg-card:       #ffffff;
-  --bg-hover:      #f5f1e8;
-  --bg-stripe:     #fcfaf6;
+  --bg-hover:      #dce0e8;
+  --bg-stripe:     #e6e9ef;
 
-  --text:          #2d2a24;
-  --text-heading:  #1a1815;
-  --text-muted:    #8c877d;
-  --text-inverse:  #faf7f2;
+  --text:          #4c4f69;
+  --text-heading:  #4c4f69;
+  --text-muted:    #9ca0b0;
+  --text-inverse:  #eff1f5;
 
-  --accent:        #b87333;
-  --accent-hover:  #965a28;
-  --accent-subtle: #faf3ea;
+  --accent:        #7287fd;
+  --accent-hover:  #5a6ff0;
+  --accent-subtle: #eae9f5;
   --accent-text:   #ffffff;
 
-  --border:        #e5e0d5;
-  --border-light:  #f0ebe0;
-  --border-strong: #d4cec2;
+  --border:        #ccd0da;
+  --border-light:  #dce0e8;
+  --border-strong: #bcc0cc;
 
-  --danger:        #c44536;
-  --danger-bg:     #fef0ed;
-  --danger-hover:  #a83528;
+  --danger:        #d20f39;
+  --danger-bg:     #feecee;
+  --danger-hover:  #b80e2e;
 
-  --success:       #5b8a5e;
-  --success-bg:    #eef5ee;
-  --success-text:  #3a5c3d;
+  --success:       #40a02b;
+  --success-bg:    #edf7ec;
+  --success-text:  #2d7a1e;
 
-  --warning-bg:    #fdf5e6;
-  --warning-text:  #8a6d3b;
+  --warning-bg:    #fef4e6;
+  --warning-text:  #df8e1d;
 
-  --shadow-sm:     0 1px 2px rgba(45, 42, 36, 0.04);
-  --shadow-md:     0 4px 12px rgba(45, 42, 36, 0.06), 0 1px 2px rgba(45, 42, 36, 0.04);
-  --shadow-lg:     0 12px 32px rgba(45, 42, 36, 0.08), 0 2px 4px rgba(45, 42, 36, 0.04);
+  --shadow-sm:     0 1px 2px rgba(76, 79, 105, 0.06);
+  --shadow-md:     0 4px 12px rgba(76, 79, 105, 0.08), 0 1px 2px rgba(76, 79, 105, 0.04);
+  --shadow-lg:     0 12px 32px rgba(76, 79, 105, 0.1), 0 2px 4px rgba(76, 79, 105, 0.04);
 
   --radius-sm:     4px;
   --radius:        8px;
@@ -68,35 +68,35 @@
 
 /* ---- Dark Theme ---- */
 [data-theme="dark"] {
-  --bg:            #1b1915;
-  --bg-card:       #24221d;
-  --bg-hover:      #2e2b25;
-  --bg-stripe:     #1f1d19;
+  --bg:            #1e1e2e;
+  --bg-card:       #181825;
+  --bg-hover:      #11111b;
+  --bg-stripe:     #181825;
 
-  --text:          #e3ded3;
-  --text-heading:  #efece4;
-  --text-muted:    #9b9587;
-  --text-inverse:  #1b1915;
+  --text:          #cdd6f4;
+  --text-heading:  #cdd6f4;
+  --text-muted:    #6c7086;
+  --text-inverse:  #1e1e2e;
 
-  --accent:        #d4a853;
-  --accent-hover:  #e2ba64;
-  --accent-subtle: #2a2316;
-  --accent-text:   #1b1915;
+  --accent:        #b4befe;
+  --accent-hover:  #c6d0ff;
+  --accent-subtle: #313244;
+  --accent-text:   #1e1e2e;
 
-  --border:        #38342b;
-  --border-light:  #2d2a23;
-  --border-strong: #4d473c;
+  --border:        #45475a;
+  --border-light:  #313244;
+  --border-strong: #585b70;
 
-  --danger:        #e0554a;
-  --danger-bg:     #2c1d1a;
-  --danger-hover:  #c23d33;
+  --danger:        #f38ba8;
+  --danger-bg:     #2c1d25;
+  --danger-hover:  #e06c8c;
 
-  --success:       #6b9b6e;
+  --success:       #a6e3a1;
   --success-bg:    #1d241e;
-  --success-text:  #7bb17e;
+  --success-text:  #a6e3a1;
 
   --warning-bg:    #2a2415;
-  --warning-text:  #d4a853;
+  --warning-text:  #f9e2af;
 
   --shadow-sm:     0 1px 2px rgba(0, 0, 0, 0.2);
   --shadow-md:     0 4px 12px rgba(0, 0, 0, 0.3);
@@ -349,7 +349,7 @@ textarea {
 }
 
 select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238c877d' d='M1.41 0L6 4.58 10.59 0 12 1.41l-6 6-6-6z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%239ca0b0' d='M1.41 0L6 4.58 10.59 0 12 1.41l-6 6-6-6z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.75rem center;
   padding-right: 2.25rem;
@@ -359,7 +359,7 @@ select {
 input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(184, 115, 51, 0.12);
+  box-shadow: 0 0 0 3px rgba(114, 135, 253, 0.12);
 }
 
 input[type="checkbox"] {
@@ -430,7 +430,7 @@ button:active, input[type="submit"]:active {
 }
 button:focus-visible, input[type="submit"]:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(184, 115, 51, 0.3);
+  box-shadow: 0 0 0 3px rgba(114, 135, 253, 0.3);
 }
 button:disabled, input[type="submit"]:disabled {
   opacity: 0.5;
@@ -598,6 +598,37 @@ header p.muted {
   font-size: 1.1rem;
 }
 
+/* ---- Summary Table (dashboard) ---- */
+.summary-table tbody td:nth-child(2),
+.summary-table tbody td:nth-child(3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-table tfoot {
+  border-top: 2px solid var(--accent);
+}
+
+.summary-table tfoot th,
+.summary-table tfoot td {
+  text-align: center;
+  padding: var(--spacing-md);
+  font-size: var(--font-size-lg);
+}
+
+.summary-table tfoot th {
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.summary-table tfoot td {
+  color: var(--accent);
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
 /* ============================================
    Invoice Sheet (printable document)
    ============================================ */
@@ -730,17 +761,17 @@ header p.muted {
    Dark Mode Overrides (non-variable values)
    ============================================ */
 [data-theme="dark"] select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%239b9587' d='M1.41 0L6 4.58 10.59 0 12 1.41l-6 6-6-6z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%236c7086' d='M1.41 0L6 4.58 10.59 0 12 1.41l-6 6-6-6z'/%3E%3C/svg%3E");
 }
 
 [data-theme="dark"] input:focus,
 [data-theme="dark"] select:focus,
 [data-theme="dark"] textarea:focus {
-  box-shadow: 0 0 0 3px rgba(212, 168, 83, 0.18);
+  box-shadow: 0 0 0 3px rgba(180, 190, 254, 0.18);
 }
 [data-theme="dark"] button:focus-visible,
 [data-theme="dark"] input[type="submit"]:focus-visible {
-  box-shadow: 0 0 0 3px rgba(212, 168, 83, 0.35);
+  box-shadow: 0 0 0 3px rgba(180, 190, 254, 0.35);
 }
 
 /* Keep invoice sheet always light */

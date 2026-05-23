@@ -188,9 +188,9 @@ type InvoiceData struct {
 	Items              []ItemData
 }
 
-// parseAddress splits an address string into street, city, and postal code.
+// ParseAddress splits an address string into street, city, and postal code.
 // Convention: up to 3 non-empty lines — last line = postal code, second-to-last = city, rest = street.
-func parseAddress(address string) (street, city, postalCode string) {
+func ParseAddress(address string) (street, city, postalCode string) {
 	parts := strings.Split(address, "\n")
 	nonEmpty := []string{}
 	for _, p := range parts {
@@ -212,6 +212,10 @@ func parseAddress(address string) (street, city, postalCode string) {
 		street = strings.Join(nonEmpty[:len(nonEmpty)-2], ", ")
 		return street, city, last
 	}
+}
+
+func parseAddress(address string) (street, city, postalCode string) {
+	return ParseAddress(address)
 }
 
 type ItemData struct {

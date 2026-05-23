@@ -42,7 +42,7 @@ func TestOCRUploadPageWhenEnabled(t *testing.T) {
 	multiStore := db.NewMultiStore(t.TempDir(), migDir)
 	multiStore.SetLegacyStore(store)
 	app := New(multiStore, nil, nil, nil, cfg, logger)
-	app.legacyStore = store
+	app.SetLegacyStore(store)
 
 	req := httptest.NewRequest("GET", "/ocr/import", nil)
 	ctx := WithTestStore(req.Context(), store)

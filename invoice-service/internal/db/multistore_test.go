@@ -148,9 +148,7 @@ func TestMultiStoreLRUEviction(t *testing.T) {
 		t.Fatalf("ForUser 3: %v", err)
 	}
 
-	ms.mu.Lock()
-	count := len(ms.stores)
-	ms.mu.Unlock()
+	count := ms.cache.len()
 
 	if count > 2 {
 		t.Errorf("expected at most 2 stores cached, got %d", count)
@@ -162,13 +160,14 @@ func TestMultiStoreIdleSweep(t *testing.T) {
 	dir := t.TempDir()
 	migDir := findMigrationsDir(t)
 	ms := &MultiStore{
-		dir:           dir,
-		migrationsDir: migDir,
-		stores:        make(map[int64]*storeEntry),
-		maxStores:     64,
-		idleMin:       1 * time.Millisecond,
-		closeCtx:      make(chan struct{}),
+		factory: userStoreFactory{
+			dir:           dir,
+			migrationsDir: migDir,
+		},
+		cache:    newUserStoreCache(64),
+		closeCtx: make(chan struct{}),
 	}
+	ms.cache.idleMin = 1 * time.Millisecond
 	defer func() {
 		if err := ms.Close(); err != nil {
 			t.Fatalf("Close: %v", err)
@@ -183,9 +182,7 @@ func TestMultiStoreIdleSweep(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	ms.sweepIdle()
 
-	ms.mu.Lock()
-	count := len(ms.stores)
-	ms.mu.Unlock()
+	count := ms.cache.len()
 
 	if count != 0 {
 		t.Errorf("expected 0 stores after idle sweep, got %d", count)

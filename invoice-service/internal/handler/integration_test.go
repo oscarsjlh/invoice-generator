@@ -28,7 +28,7 @@ func newTestServer(t *testing.T) (*httptest.Server, *db.Store) {
 	multiStore.SetLegacyStore(store)
 
 	app := New(multiStore, nil, nil, nil, cfg, logger)
-	app.legacyStore = store
+	app.SetLegacyStore(store)
 
 	server := httptest.NewServer(app.Routes())
 	t.Cleanup(server.Close)

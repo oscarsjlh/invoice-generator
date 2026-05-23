@@ -2,24 +2,23 @@ package db
 
 import "database/sql"
 
-// Storer defines the interface for all database operations.
-// *db.Store implements this interface implicitly.
-type Storer interface {
-	// Entry operations
+type EntryStore interface {
 	ListEntries() ([]Entry, error)
 	CreateEntry(date, category string, hours float64, notes string) error
 	GetEntry(id int64) (Entry, error)
 	UpdateEntry(id int64, date, category string, hours float64, notes string) error
 	DeleteEntry(id int64) error
+}
 
-	// Rate operations
+type RateStore interface {
 	ListRates() ([]Rate, error)
 	CreateRate(category, startDate, endDate string, rate float64) error
 	DeleteRate(id int64) error
 	GetRate(id int64) (Rate, error)
 	UpdateRate(id int64, category, startDate, endDate string, rate float64) error
+}
 
-	// Invoice operations
+type InvoiceStore interface {
 	ListMonthlySummary() ([]MonthlySummary, error)
 	ListAvailableYears() ([]string, error)
 	ListAvailableMonths(year string) ([]string, error)
@@ -28,15 +27,18 @@ type Storer interface {
 	CountUnratedEntries(month, category string) (int, error)
 	GenerateInvoice(month, category, invoiceDate string, dueDays int, settings Settings) (int64, error)
 	GetInvoice(id int64) (Invoice, error)
+}
 
-	// Category operations
+type CategoryStore interface {
 	ListCategories() ([]string, error)
+}
 
-	// Settings operations
+type SettingsStore interface {
 	LoadSettings() (Settings, error)
 	SaveSettings(settings Settings) error
+}
 
-	// OCR operations
+type OCRStore interface {
 	CreateOCRSession() (int64, error)
 	GetOCRSession(id int64) (OCRSession, error)
 	UpdateOCRSessionState(id int64, state string, errorMsg string) error
@@ -50,9 +52,23 @@ type Storer interface {
 	ConfirmDraftEntries(sessionID int64, ids []int64) (confirmed []int64, skipped []int64, err error)
 	DeleteOCRSession(id int64) error
 	CleanupStaleOCRSessions(maxAgeHours int) (int, error)
+}
 
-	// Raw access
+type StoreLifecycle interface {
 	DB() *sql.DB
 	Close() error
 	Migrate(dir string) error
+}
+
+// Storer is the compatibility interface for handlers that still need multiple
+// persistence capabilities. New workflow modules should depend on the smallest
+// interface they need instead of this composed surface.
+type Storer interface {
+	EntryStore
+	RateStore
+	InvoiceStore
+	CategoryStore
+	SettingsStore
+	OCRStore
+	StoreLifecycle
 }

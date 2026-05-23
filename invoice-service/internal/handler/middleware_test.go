@@ -326,7 +326,7 @@ func TestAuthMiddlewareDisabledWithLegacyStore(t *testing.T) {
 	multiStore.SetLegacyStore(store)
 
 	app := New(multiStore, nil, nil, nil, cfg, logger)
-	app.legacyStore = store
+	app.SetLegacyStore(store)
 
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s := StoreFromContext(r.Context())

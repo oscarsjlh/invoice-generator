@@ -2,18 +2,13 @@ package handler
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"net/url"
-	"os"
-	"strings"
 	"time"
 
-	"invoice-app/internal/db"
-	"invoice-app/internal/email"
-	"invoice-app/internal/pdf"
-	"invoice-app/templates"
+	"invoice-app/internal/invoicedelivery"
 )
 
 func (a *App) invoicesPage(w http.ResponseWriter, r *http.Request) {
@@ -131,12 +126,8 @@ func (a *App) invoicePDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, sErr := store.LoadSettings()
-	if sErr != nil {
-		LoggerFromContext(r.Context()).Error("load settings for pdf", "error", sErr)
-	}
-
-	pdfData, err := a.buildPDF(invoice, settings)
+	delivery := invoicedelivery.New(store, a.cfg)
+	result, err := delivery.RenderPDF(r.Context(), id)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("generate pdf", "invoice_id", id, "invoice_number", invoice.InvoiceNumber, "error", err)
 		http.Error(w, fmt.Sprintf("generate pdf: %v", err), http.StatusInternalServerError)
@@ -145,8 +136,8 @@ func (a *App) invoicePDF(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.pdf"`, sanitizeHeaderValue(invoice.InvoiceNumber)))
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(pdfData)))
-	_, _ = w.Write(pdfData)
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(result.Data)))
+	_, _ = w.Write(result.Data)
 }
 
 func (a *App) sendInvoice(w http.ResponseWriter, r *http.Request) {
@@ -167,153 +158,26 @@ func (a *App) sendInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := store.LoadSettings()
-	if err != nil {
-		LoggerFromContext(r.Context()).Error("load settings for send", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	if settings.CustomerEmail == "" {
+	delivery := invoicedelivery.New(store, a.cfg)
+	result, err := delivery.Send(r.Context(), id)
+	if errors.Is(err, invoicedelivery.ErrCustomerEmailMissing) {
 		a.redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), "Customer email not configured — set it in Settings")
 		return
 	}
-
-	cfg := email.Config{
-		SMTPHost: a.cfg.SMTPHost,
-		SMTPPort: a.cfg.SMTPPort,
-		SMTPUser: a.cfg.SMTPUser,
-		SMTPPass: a.cfg.SMTPPass,
-		SMTPFrom: a.cfg.SMTPFrom,
-	}
-
-	if cfg.SMTPHost == "" || cfg.SMTPFrom == "" {
+	if errors.Is(err, invoicedelivery.ErrSMTPNotConfigured) {
 		a.redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), "SMTP not configured — set SMTP_HOST and SMTP_FROM environment variables")
 		return
 	}
-
-	pdfData, err := a.buildPDF(invoice, settings)
-	if err != nil {
+	if errors.Is(err, invoicedelivery.ErrRenderPDF) {
 		LoggerFromContext(r.Context()).Error("generate pdf for send", "invoice_id", id, "invoice_number", invoice.InvoiceNumber, "error", err)
 		a.redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), fmt.Sprintf("Generate PDF failed: %v", err))
 		return
 	}
-
-	customerName := settings.CustomerName
-	if customerName == "" {
-		customerName = "Customer"
-	}
-
-	if err := email.SendInvoice(
-		nil,
-		settings.CustomerEmail,
-		customerName,
-		cfg.SMTPFrom,
-		invoice.InvoiceNumber,
-		pdfData,
-		cfg,
-	); err != nil {
-		LoggerFromContext(r.Context()).Error("send invoice email", "invoice_id", id, "invoice_number", invoice.InvoiceNumber, "recipient", settings.CustomerEmail, "error", err)
+	if err != nil {
+		LoggerFromContext(r.Context()).Error("send invoice email", "invoice_id", id, "invoice_number", invoice.InvoiceNumber, "error", err)
 		a.redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), fmt.Sprintf("Send failed: %v", err))
 		return
 	}
 
-	a.redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), fmt.Sprintf("Invoice sent to %s", settings.CustomerEmail))
-}
-
-func (a *App) buildPDF(invoice db.Invoice, settings db.Settings) ([]byte, error) {
-	tmpDir, err := os.MkdirTemp("", "typst-invoice-*")
-	if err != nil {
-		return nil, fmt.Errorf("create temp dir: %w", err)
-	}
-	defer func() {
-		_ = os.RemoveAll(tmpDir)
-	}()
-
-	templateBytes, err := templates.FS.ReadFile("invoice-maker.typ")
-	if err != nil {
-		return nil, fmt.Errorf("read typst template: %w", err)
-	}
-
-	street, city, postalCode := parseAddress(invoice.BusinessAddress)
-
-	parsedCustomerStreet, parsedCustomerCity, parsedCustomerPostalCode := parseAddress(settings.CustomerAddress)
-
-	customerStreet := parsedCustomerStreet
-	if customerStreet == "" {
-		customerStreet = street
-	}
-
-	customerCity := settings.CustomerCity
-	if customerCity == "" {
-		customerCity = parsedCustomerCity
-	}
-	if customerCity == "" {
-		customerCity = city
-	}
-
-	customerPostalCode := settings.CustomerPostalCode
-	if customerPostalCode == "" {
-		customerPostalCode = parsedCustomerPostalCode
-	}
-	if customerPostalCode == "" {
-		customerPostalCode = postalCode
-	}
-
-	data := pdf.InvoiceData{
-		InvoiceNumber:      invoice.InvoiceNumber,
-		InvoiceDate:        invoice.InvoiceDate,
-		DueDate:            invoice.DueDate,
-		Month:              invoice.Month,
-		BusinessName:       invoice.BusinessName,
-		Street:             street,
-		City:               city,
-		PostalCode:         postalCode,
-		BankName:           invoice.BankName,
-		AccountName:        invoice.AccountName,
-		SortCode:           invoice.SortCode,
-		AccountNumber:      invoice.AccountNumber,
-		PaymentTerms:       invoice.PaymentTerms,
-		CustomerName:       settings.CustomerName,
-		CustomerTitle:      settings.CustomerTitle,
-		CustomerStreet:     customerStreet,
-		CustomerCity:       customerCity,
-		CustomerPostalCode: customerPostalCode,
-	}
-
-	for _, line := range invoice.Lines {
-		hoursMinutes := int(math.Round(line.Hours * 60))
-		data.Items = append(data.Items, pdf.ItemData{
-			Description: line.Category,
-			DurMin:      hoursMinutes,
-			HourlyRate:  line.Rate,
-		})
-	}
-
-	typContent := pdf.FormatInvoiceTyp(data)
-	return pdf.GenerateInvoicePDF(tmpDir, templateBytes, typContent)
-}
-
-func parseAddress(address string) (street, city, postalCode string) {
-	parts := strings.Split(address, "\n")
-	nonEmpty := []string{}
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			nonEmpty = append(nonEmpty, p)
-		}
-	}
-	switch len(nonEmpty) {
-	case 0:
-		return address, "", ""
-	case 1:
-		return nonEmpty[0], "", ""
-	case 2:
-		return nonEmpty[0], nonEmpty[1], ""
-	default:
-		last := nonEmpty[len(nonEmpty)-1]
-		city := nonEmpty[len(nonEmpty)-2]
-		street := strings.Join(nonEmpty[:len(nonEmpty)-2], ", ")
-		return street, city, last
-	}
+	a.redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), fmt.Sprintf("Invoice sent to %s", result.Recipient))
 }

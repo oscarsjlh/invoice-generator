@@ -2,17 +2,12 @@ package handler
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"net/http"
 	"net/url"
-	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"invoice-app/internal/auth"
@@ -20,7 +15,6 @@ import (
 	"invoice-app/internal/db"
 	"invoice-app/internal/ocr"
 	"invoice-app/static"
-	"invoice-app/templates"
 )
 
 const (
@@ -50,16 +44,15 @@ func (a *App) StoreForTest() *db.MultiStore {
 
 type App struct {
 	multiStore  *db.MultiStore
+	stores      *RequestStoreProvider
 	authDB      *db.AuthDB
 	webAuthn    *auth.WebAuthnManager
 	sessions    *auth.SessionManager
 	cfg         config.Config
 	logger      *slog.Logger
-	baseTmpl    *template.Template
-	ocrClient   ocr.Extractor
-	ocrWg       sync.WaitGroup
+	renderer    *Renderer
+	ocrJobs     *OCRJobRunner
 	authEnabled bool
-	legacyStore *db.Store
 }
 
 type DashboardPageData struct {
@@ -126,6 +119,7 @@ type RegisterPageData struct {
 func New(multiStore *db.MultiStore, authDB *db.AuthDB, webAuthn *auth.WebAuthnManager, sessions *auth.SessionManager, cfg config.Config, logger *slog.Logger) *App {
 	app := &App{
 		multiStore:  multiStore,
+		stores:      NewRequestStoreProvider(multiStore),
 		authDB:      authDB,
 		webAuthn:    webAuthn,
 		sessions:    sessions,
@@ -133,111 +127,30 @@ func New(multiStore *db.MultiStore, authDB *db.AuthDB, webAuthn *auth.WebAuthnMa
 		logger:      logger,
 		authEnabled: cfg.AuthEnabled,
 	}
-	app.baseTmpl = app.compileTemplates()
+	app.renderer = NewRenderer(logger, func() bool { return app.authEnabled }, func() bool { return app.cfg.OCREnabled })
+	app.ocrJobs = NewOCRJobRunner(app.stores, &app.cfg)
 	return app
 }
 
-func (a *App) compileTemplates() *template.Template {
-	funcMap := template.FuncMap{
-		"money":       money,
-		"numfmt":      numfmt,
-		"dateLabel":   dateLabel,
-		"selected":    selected,
-		"monthName":   monthName,
-		"mul":         func(a float64, b float64) float64 { return a * b },
-		"divf":        func(a float64, b float64) float64 { return a / b },
-		"div":         func(a, b int64) int64 { return a / b },
-		"authEnabled": func() bool { return a.authEnabled },
-		"ocrEnabled":  func() bool { return a.cfg.OCREnabled },
-	}
-
-	tmpl, err := template.New("").Funcs(funcMap).ParseFS(templates.FS, "layout.html")
-	if err != nil {
-		a.logger.Error("compile base template", "error", err)
-		panic(fmt.Sprintf("failed to compile base template: %v", err))
-	}
-	return tmpl
-}
-
 func (a *App) WaitForOCR() {
-	a.ocrWg.Wait()
+	a.ocrJobs.Wait()
 }
 
 func (a *App) SetLegacyStore(store *db.Store) {
-	a.legacyStore = store
+	a.stores.SetLegacyStore(store)
 }
 
 // SetOCRClient sets the OCR extractor for testing.
 func (a *App) SetOCRClient(client ocr.Extractor) {
-	a.ocrClient = client
+	a.ocrJobs.SetExtractor(client)
 }
 
 func (a *App) renderPage(w http.ResponseWriter, r *http.Request, status int, page string, data any, extra ...string) {
-	files := append([]string{"layout.html"}, extra...)
-	files = append(files, page)
-
-	tmpl, err := a.baseTmpl.Clone()
-	if err != nil {
-		http.Error(w, fmt.Sprintf("clone template: %v", err), http.StatusInternalServerError)
-		return
-	}
-	if _, err := tmpl.ParseFS(templates.FS, files...); err != nil {
-		http.Error(w, fmt.Sprintf("parse template: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	data = injectUser(data, UserFromContext(r.Context()))
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	if err := tmpl.ExecuteTemplate(w, "layout", data); err != nil {
-		http.Error(w, fmt.Sprintf("execute template: %v", err), http.StatusInternalServerError)
-	}
-}
-
-func injectUser(data any, user *db.User) any {
-	v := reflect.ValueOf(data)
-	if !v.IsValid() {
-		return data
-	}
-
-	elem := reflect.Indirect(v)
-	if elem.IsValid() && elem.Kind() == reflect.Struct && v != elem {
-		f := elem.FieldByName("User")
-		if f.IsValid() && f.CanSet() && f.Type() == reflect.TypeOf(user) {
-			f.Set(reflect.ValueOf(user))
-		}
-		return data
-	}
-
-	if v.Kind() == reflect.Struct {
-		ptr := reflect.New(v.Type())
-		ptr.Elem().Set(v)
-		f := ptr.Elem().FieldByName("User")
-		if f.IsValid() && f.CanSet() && f.Type() == reflect.TypeOf(user) {
-			f.Set(reflect.ValueOf(user))
-		}
-		return ptr.Interface()
-	}
-	return data
+	a.renderer.Page(w, r, status, page, data, extra...)
 }
 
 func (a *App) renderPartial(w http.ResponseWriter, status int, name string, data any, files ...string) {
-	tmpl, err := a.baseTmpl.Clone()
-	if err != nil {
-		http.Error(w, fmt.Sprintf("clone template: %v", err), http.StatusInternalServerError)
-		return
-	}
-	if _, err := tmpl.ParseFS(templates.FS, files...); err != nil {
-		http.Error(w, fmt.Sprintf("parse partial: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	if err := tmpl.ExecuteTemplate(w, name, data); err != nil {
-		http.Error(w, fmt.Sprintf("execute partial: %v", err), http.StatusInternalServerError)
-	}
+	a.renderer.Partial(w, status, name, data, files...)
 }
 
 func (a *App) Routes() http.Handler {
@@ -300,31 +213,18 @@ func isPublicPath(path string) bool {
 func (a *App) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !a.authEnabled {
-			if a.legacyStore == nil {
+			secure := r.TLS != nil
+			if a.sessions != nil {
+				secure = a.sessions.IsSecure(r)
+			}
+			ensureCSRFCookie(w, r, secure)
+			store, user, err := a.stores.ForRequest(r, nil)
+			if err != nil {
 				http.Error(w, "auth disabled but no legacy store configured", http.StatusInternalServerError)
 				return
 			}
-			if isSafeMethod(r.Method) {
-				if _, err := r.Cookie("csrf_token"); err != nil {
-					csrf := make([]byte, 16)
-					if _, err := rand.Read(csrf); err == nil {
-						secure := r.TLS != nil
-						if a.sessions != nil {
-							secure = a.sessions.IsSecure(r)
-						}
-						http.SetCookie(w, &http.Cookie{
-							Name:     "csrf_token",
-							Value:    base64.RawURLEncoding.EncodeToString(csrf),
-							Path:     "/",
-							HttpOnly: false,
-							Secure:   secure,
-							SameSite: http.SameSiteLaxMode,
-						})
-					}
-				}
-			}
-			ctx := context.WithValue(r.Context(), contextKeyStore, a.legacyStore)
-			ctx = context.WithValue(ctx, contextKeyUser, &db.User{ID: 0, Username: "anonymous", DisplayName: "Anonymous"})
+			ctx := context.WithValue(r.Context(), contextKeyStore, store)
+			ctx = context.WithValue(ctx, contextKeyUser, user)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
@@ -340,23 +240,9 @@ func (a *App) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if isSafeMethod(r.Method) {
-			if _, err := r.Cookie("csrf_token"); err != nil {
-				csrf := make([]byte, 16)
-				if _, err := rand.Read(csrf); err == nil {
-					http.SetCookie(w, &http.Cookie{
-						Name:     "csrf_token",
-						Value:    base64.RawURLEncoding.EncodeToString(csrf),
-						Path:     "/",
-						HttpOnly: false,
-						Secure:   a.sessions.IsSecure(r),
-						SameSite: http.SameSiteLaxMode,
-					})
-				}
-			}
-		}
+		ensureCSRFCookie(w, r, a.sessions.IsSecure(r))
 
-		store, err := a.multiStore.ForUser(user.ID)
+		store, user, err := a.stores.ForRequest(r, user)
 		if err != nil {
 			a.logger.Error("open user database", "user_id", user.ID, "error", err)
 			http.Error(w, "internal server error", http.StatusInternalServerError)
