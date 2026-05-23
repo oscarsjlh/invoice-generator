@@ -3,10 +3,13 @@ package handler
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -14,7 +17,7 @@ type contextKey string
 
 const loggerKey contextKey = "logger"
 
-func NewLogger(level, format string) *slog.Logger {
+func NewLogger(level, format string, includeSource bool) *slog.Logger {
 	var l slog.Level
 	switch level {
 	case "debug":
@@ -30,11 +33,12 @@ func NewLogger(level, format string) *slog.Logger {
 	}
 
 	var handler slog.Handler
+	opts := &slog.HandlerOptions{Level: l, AddSource: includeSource}
 	switch format {
 	case "text":
-		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: l})
+		handler = slog.NewTextHandler(os.Stdout, opts)
 	default:
-		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: l})
+		handler = slog.NewJSONHandler(os.Stdout, opts)
 	}
 	return slog.New(handler)
 }
@@ -45,6 +49,7 @@ func LoggerMiddleware(baseLogger *slog.Logger) func(http.Handler) http.Handler {
 			requestID := generateRequestID()
 			logger := baseLogger.With("request_id", requestID)
 			ctx := context.WithValue(r.Context(), loggerKey, logger)
+			w.Header().Set("X-Request-ID", requestID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -100,6 +105,13 @@ func (rw *responseWriter) Flush() {
 	}
 }
 
+func (rw *responseWriter) Push(target string, opts *http.PushOptions) error {
+	if pusher, ok := rw.ResponseWriter.(http.Pusher); ok {
+		return pusher.Push(target, opts)
+	}
+	return http.ErrNotSupported
+}
+
 func RequestLoggingMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -110,13 +122,19 @@ func RequestLoggingMiddleware() func(http.Handler) http.Handler {
 
 			logger := LoggerFromContext(r.Context())
 			attrs := []slog.Attr{
+				slog.String("event", "http_request"),
+				slog.String("component", "http"),
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
+				slog.String("route", r.Pattern),
 				slog.Int("status", rw.statusCode),
 				slog.Int64("duration_ms", duration.Milliseconds()),
-				slog.String("remote_addr", r.RemoteAddr),
+				slog.String("remote_addr", redactRemoteAddr(r.RemoteAddr)),
 				slog.String("user_agent", r.UserAgent()),
 				slog.Int("bytes_written", rw.bytes),
+			}
+			if user := UserFromContext(r.Context()); user != nil {
+				attrs = append(attrs, slog.Int64("user_id", user.ID))
 			}
 			if r.Header.Get("HX-Request") == "true" {
 				attrs = append(attrs, slog.Bool("hx_request", true))
@@ -124,7 +142,24 @@ func RequestLoggingMiddleware() func(http.Handler) http.Handler {
 					attrs = append(attrs, slog.String("hx_target", target))
 				}
 			}
-			logger.LogAttrs(r.Context(), slog.LevelInfo, "request", attrs...)
+			logger.LogAttrs(r.Context(), slog.LevelInfo, "http_request", attrs...)
 		})
 	}
+}
+
+func redactRemoteAddr(addr string) string {
+	if addr == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(addr))
+	return fmt.Sprintf("sha256:%x", sum[:8])
+}
+
+func RedactEmail(value string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(trimmed))
+	return fmt.Sprintf("sha256:%x", sum[:8])
 }

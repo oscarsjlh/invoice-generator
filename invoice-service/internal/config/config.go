@@ -7,21 +7,22 @@ import (
 )
 
 type Config struct {
-	Address        string
-	DatabasePath   string
-	MigrationsDir  string
-	TypstBin       string
-	SMTPHost       string
-	SMTPPort       string
-	SMTPUser       string
-	SMTPPass       string
-	SMTPFrom       string
-	OCRServiceURL  string
-	OCREnabled     bool
-	OCRUploadDir   string
-	DefaultDueDays int
-	LogLevel       string
-	LogFormat      string
+	Address          string
+	DatabasePath     string
+	MigrationsDir    string
+	TypstBin         string
+	SMTPHost         string
+	SMTPPort         string
+	SMTPUser         string
+	SMTPPass         string
+	SMTPFrom         string
+	OCRServiceURL    string
+	OCREnabled       bool
+	OCRUploadDir     string
+	DefaultDueDays   int
+	LogLevel         string
+	LogFormat        string
+	LogIncludeSource bool
 
 	// Auth configuration
 	AuthEnabled       bool
@@ -37,20 +38,21 @@ type Config struct {
 
 func Load() Config {
 	return Config{
-		Address:       getenv("ADDRESS", ":8080"),
-		DatabasePath:  getenv("DATABASE_PATH", "data/invoices.db"),
-		MigrationsDir: getenv("MIGRATIONS_DIR", "migrations"),
-		TypstBin:      getenv("TYPST_BIN", ""),
-		SMTPHost:      getenv("SMTP_HOST", ""),
-		SMTPPort:      getenv("SMTP_PORT", "587"),
-		SMTPUser:      getenv("SMTP_USER", ""),
-		SMTPPass:      getenv("SMTP_PASS", ""),
-		SMTPFrom:      getenv("SMTP_FROM", ""),
-		OCRServiceURL: getenv("OCR_SERVICE_URL", ""),
-		OCREnabled:    getenv("OCR_ENABLED", "") == "true",
-		OCRUploadDir:  getenv("OCR_UPLOAD_DIR", "data/ocr-uploads"),
-		LogLevel:      getenv("LOG_LEVEL", "info"),
-		LogFormat:     getenv("LOG_FORMAT", "json"),
+		Address:          getenv("ADDRESS", ":8080"),
+		DatabasePath:     getenv("DATABASE_PATH", "data/invoices.db"),
+		MigrationsDir:    getenv("MIGRATIONS_DIR", "migrations"),
+		TypstBin:         getenv("TYPST_BIN", ""),
+		SMTPHost:         getenv("SMTP_HOST", ""),
+		SMTPPort:         getenv("SMTP_PORT", "587"),
+		SMTPUser:         getenv("SMTP_USER", ""),
+		SMTPPass:         getenv("SMTP_PASS", ""),
+		SMTPFrom:         getenv("SMTP_FROM", ""),
+		OCRServiceURL:    getenv("OCR_SERVICE_URL", ""),
+		OCREnabled:       getenv("OCR_ENABLED", "") == "true",
+		OCRUploadDir:     getenv("OCR_UPLOAD_DIR", "data/ocr-uploads"),
+		LogLevel:         getenv("LOG_LEVEL", "info"),
+		LogFormat:        getenv("LOG_FORMAT", "json"),
+		LogIncludeSource: getenv("LOG_INCLUDE_SOURCE", "") == "true",
 
 		AuthEnabled:       getenv("AUTH_ENABLED", "") != "false",
 		AuthDBPath:        getenv("AUTH_DB_PATH", "data/auth.db"),
