@@ -17,7 +17,7 @@ import (
 func main() {
 	cfg := config.Load()
 
-	logger := handler.NewLogger(cfg.LogLevel, cfg.LogFormat)
+	logger := handler.NewLogger(cfg.LogLevel, cfg.LogFormat, cfg.LogIncludeSource)
 
 	var authDB *db.AuthDB
 	var webAuthn *auth.WebAuthnManager

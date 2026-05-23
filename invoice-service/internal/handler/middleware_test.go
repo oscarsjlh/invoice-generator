@@ -53,8 +53,8 @@ func TestRequestLoggingMiddleware(t *testing.T) {
 		w.Write([]byte("hello"))
 	})
 
-	// Wrap with request logging middleware
-	handler := RequestLoggingMiddleware()(helloHandler)
+	// Wrap with logger and request logging middleware
+	handler := LoggerMiddleware(NewLogger("error", "text", false))(RequestLoggingMiddleware()(helloHandler))
 
 	req := httptest.NewRequest("GET", "/test", nil)
 	w := httptest.NewRecorder()
@@ -62,6 +62,7 @@ func TestRequestLoggingMiddleware(t *testing.T) {
 
 	resp := w.Result()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.NotEmpty(t, resp.Header.Get("X-Request-ID"))
 	body, _ := io.ReadAll(resp.Body)
 	assert.Contains(t, string(body), "hello")
 }
