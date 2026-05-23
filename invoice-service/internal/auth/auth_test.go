@@ -64,7 +64,8 @@ func TestBeginRegistrationUsernameTaken(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	adb.CreateUser("alice", "Alice")
+	_, err = adb.CreateUser("alice", "Alice")
+	require.NoError(t, err)
 
 	_, _, err = m.BeginRegistration("alice", "Alice Duplicate")
 	require.Error(t, err)

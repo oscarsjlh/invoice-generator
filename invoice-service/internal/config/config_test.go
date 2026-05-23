@@ -34,12 +34,12 @@ func TestConfigDefaults(t *testing.T) {
 
 func TestConfigEnvOverrides(t *testing.T) {
 	cleanEnv(t)
-	os.Setenv("ADDRESS", ":9090")
-	os.Setenv("LOG_LEVEL", "debug")
-	os.Setenv("LOG_FORMAT", "text")
-	os.Setenv("LOG_INCLUDE_SOURCE", "true")
-	os.Setenv("DATABASE_PATH", "/tmp/test.db")
-	os.Setenv("MIGRATIONS_DIR", "/tmp/migrations")
+	mustSetenv(t, "ADDRESS", ":9090")
+	mustSetenv(t, "LOG_LEVEL", "debug")
+	mustSetenv(t, "LOG_FORMAT", "text")
+	mustSetenv(t, "LOG_INCLUDE_SOURCE", "true")
+	mustSetenv(t, "DATABASE_PATH", "/tmp/test.db")
+	mustSetenv(t, "MIGRATIONS_DIR", "/tmp/migrations")
 
 	cfg := Load()
 
@@ -66,19 +66,19 @@ func TestConfigEnvOverrides(t *testing.T) {
 func TestOCREnabled(t *testing.T) {
 	cleanEnv(t)
 
-	os.Setenv("OCR_ENABLED", "true")
+	mustSetenv(t, "OCR_ENABLED", "true")
 	cfg := Load()
 	if !cfg.OCREnabled {
 		t.Error("OCREnabled should be true when OCR_ENABLED=true")
 	}
 
-	os.Setenv("OCR_ENABLED", "false")
+	mustSetenv(t, "OCR_ENABLED", "false")
 	cfg = Load()
 	if cfg.OCREnabled {
 		t.Error("OCREnabled should be false when OCR_ENABLED=false")
 	}
 
-	os.Unsetenv("OCR_ENABLED")
+	mustUnsetenv(t, "OCR_ENABLED")
 	cfg = Load()
 	if cfg.OCREnabled {
 		t.Error("OCREnabled should be false when OCR_ENABLED is empty")
@@ -112,6 +112,20 @@ func cleanEnv(t *testing.T) {
 		"OCR_SERVICE_URL", "OCR_ENABLED", "OCR_UPLOAD_DIR",
 		"LOG_LEVEL", "LOG_FORMAT", "LOG_INCLUDE_SOURCE",
 	} {
-		os.Unsetenv(key)
+		mustUnsetenv(t, key)
+	}
+}
+
+func mustSetenv(t *testing.T, key, value string) {
+	t.Helper()
+	if err := os.Setenv(key, value); err != nil {
+		t.Fatalf("Setenv %s: %v", key, err)
+	}
+}
+
+func mustUnsetenv(t *testing.T, key string) {
+	t.Helper()
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatalf("Unsetenv %s: %v", key, err)
 	}
 }

@@ -11,7 +11,9 @@ func (s *Store) ListRates() ([]Rate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list rates: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	rates := []Rate{}
 	for rows.Next() {
@@ -108,7 +110,9 @@ func (s *Store) ListCategories() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list categories: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var categories []string
 	for rows.Next() {

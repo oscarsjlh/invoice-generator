@@ -13,7 +13,9 @@ func (s *Store) ListEntries() ([]Entry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list entries: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	entries := []Entry{}
 	for rows.Next() {

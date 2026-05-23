@@ -212,7 +212,9 @@ func (a *AuthDB) GetCredentials(userID int64) ([]webauthn.Credential, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get credentials: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var creds []webauthn.Credential
 	for rows.Next() {

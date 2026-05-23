@@ -30,7 +30,9 @@ func main() {
 			logger.Error("open auth database", "error", err)
 			os.Exit(1)
 		}
-		defer authDB.Close()
+		defer func() {
+			_ = authDB.Close()
+		}()
 
 		if err := authDB.Migrate(cfg.AuthMigrationsDir); err != nil {
 			logger.Error("run auth migrations", "error", err)

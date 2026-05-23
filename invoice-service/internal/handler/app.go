@@ -197,16 +197,15 @@ func (a *App) renderPage(w http.ResponseWriter, r *http.Request, status int, pag
 
 func injectUser(data any, user *db.User) any {
 	v := reflect.ValueOf(data)
-	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			return data
-		}
-		elem := v.Elem()
-		if elem.Kind() == reflect.Struct {
-			f := elem.FieldByName("User")
-			if f.IsValid() && f.CanSet() && f.Type() == reflect.TypeOf(user) {
-				f.Set(reflect.ValueOf(user))
-			}
+	if !v.IsValid() {
+		return data
+	}
+
+	elem := reflect.Indirect(v)
+	if elem.IsValid() && elem.Kind() == reflect.Struct && v != elem {
+		f := elem.FieldByName("User")
+		if f.IsValid() && f.CanSet() && f.Type() == reflect.TypeOf(user) {
+			f.Set(reflect.ValueOf(user))
 		}
 		return data
 	}
@@ -503,7 +502,7 @@ func monthName(value string) string {
 func (a *App) health(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ok"}`))
+	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
 func sanitizeHeaderValue(value string) string {

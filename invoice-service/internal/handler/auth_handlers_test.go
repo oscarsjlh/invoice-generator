@@ -66,7 +66,7 @@ func TestLoginPageRedirectsIfAlreadyLoggedIn(t *testing.T) {
 	id, _ := ta.adb.CreateUser("alice", "Alice")
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/login", nil)
-	ta.sm.CreateSession(w, req, id)
+	require.NoError(t, ta.sm.CreateSession(w, req, id))
 	w.Flush()
 
 	req2 := httptest.NewRequest("GET", "/login", nil)
@@ -97,7 +97,7 @@ func TestRegisterPageRedirectsIfAlreadyLoggedIn(t *testing.T) {
 	id, _ := ta.adb.CreateUser("bob", "Bob")
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/register", nil)
-	ta.sm.CreateSession(w, req, id)
+	require.NoError(t, ta.sm.CreateSession(w, req, id))
 	w.Flush()
 
 	req2 := httptest.NewRequest("GET", "/register", nil)
@@ -132,7 +132,7 @@ func TestBeginRegistrationSuccess(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Result().StatusCode)
 	var resp map[string]any
-	json.NewDecoder(w.Result().Body).Decode(&resp)
+	require.NoError(t, json.NewDecoder(w.Result().Body).Decode(&resp))
 	assert.NotEmpty(t, resp["session_id"])
 	assert.NotNil(t, resp["options"])
 }
@@ -141,7 +141,8 @@ func TestBeginRegistrationDuplicate(t *testing.T) {
 	t.Parallel()
 	ta := newTestAppWithAuth(t)
 
-	ta.adb.CreateUser("frank", "Frank")
+	_, err := ta.adb.CreateUser("frank", "Frank")
+	require.NoError(t, err)
 
 	body := bytes.NewReader([]byte(`{"username":"frank","displayName":"Frank Dup"}`))
 	req := httptest.NewRequest("POST", "/api/register/begin", body)
@@ -155,7 +156,8 @@ func TestBeginLoginNoCredentials(t *testing.T) {
 	t.Parallel()
 	ta := newTestAppWithAuth(t)
 
-	ta.adb.CreateUser("grace", "Grace")
+	_, err := ta.adb.CreateUser("grace", "Grace")
+	require.NoError(t, err)
 
 	body := bytes.NewReader([]byte(`{"username":"grace"}`))
 	req := httptest.NewRequest("POST", "/api/login/begin", body)
@@ -208,7 +210,7 @@ func TestLogoutRedirects(t *testing.T) {
 	id, _ := ta.adb.CreateUser("heidi", "Heidi")
 	sessW := httptest.NewRecorder()
 	sessReq := httptest.NewRequest("GET", "/", nil)
-	ta.sm.CreateSession(sessW, sessReq, id)
+	require.NoError(t, ta.sm.CreateSession(sessW, sessReq, id))
 	sessW.Flush()
 
 	body := bytes.NewReader([]byte("csrf_token="))

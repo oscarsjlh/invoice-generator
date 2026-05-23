@@ -55,14 +55,16 @@ func (c *Client) Extract(images []string, hints ContextHint, rates []RateHint, s
 		}
 		part, err := writer.CreateFormFile("images", filepath.Base(imgPath))
 		if err != nil {
-			file.Close()
+			_ = file.Close()
 			return nil, fmt.Errorf("create form file: %w", err)
 		}
 		if _, err := io.Copy(part, file); err != nil {
-			file.Close()
+			_ = file.Close()
 			return nil, fmt.Errorf("copy image data: %w", err)
 		}
-		file.Close()
+		if err := file.Close(); err != nil {
+			return nil, fmt.Errorf("close image %s: %w", imgPath, err)
+		}
 	}
 
 	if err := writer.Close(); err != nil {
@@ -79,7 +81,9 @@ func (c *Client) Extract(images []string, hints ContextHint, rates []RateHint, s
 	if err != nil {
 		return nil, fmt.Errorf("ocr service request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

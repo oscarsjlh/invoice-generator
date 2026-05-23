@@ -50,7 +50,7 @@ func TestRequestLoggingMiddleware(t *testing.T) {
 	// Create a simple handler
 	helloHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("hello"))
+		_, _ = w.Write([]byte("hello"))
 	})
 
 	// Wrap with logger and request logging middleware
@@ -186,7 +186,7 @@ func TestSecurityHeadersMiddleware(t *testing.T) {
 	t.Parallel()
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	})
 	handler := SecurityHeadersMiddleware()(inner)
 
@@ -289,7 +289,7 @@ func TestAuthMiddlewareValidSessionPassesThrough(t *testing.T) {
 
 	sessW := httptest.NewRecorder()
 	sessReq := httptest.NewRequest("GET", "/", nil)
-	ta.sm.CreateSession(sessW, sessReq, id)
+	assert.NoError(t, ta.sm.CreateSession(sessW, sessReq, id))
 	sessW.Flush()
 
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

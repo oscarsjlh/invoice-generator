@@ -7,7 +7,9 @@ func (s *Store) LoadSettings() (Settings, error) {
 	if err != nil {
 		return Settings{}, fmt.Errorf("load settings: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	settings := Settings{DefaultDueDays: 30}
 	for rows.Next() {
@@ -62,7 +64,9 @@ func (s *Store) SaveSettings(settings Settings) error {
 	if err != nil {
 		return fmt.Errorf("begin save settings: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	values := map[string]string{
 		"business_name":        settings.BusinessName,

@@ -47,6 +47,11 @@ func findMigrationsDir(t *testing.T) string {
 func TestEntryCRUD(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
 	err := store.CreateEntry("2024-03-15", "Consulting", 4.5, "Client meeting")
 	if err != nil {
@@ -65,10 +70,21 @@ func TestEntryCRUD(t *testing.T) {
 func TestListEntriesSorted(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
-	store.CreateEntry("2024-03-10", "Design", 2.0, "")
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	store.CreateEntry("2024-03-05", "Research", 1.0, "")
+	if err := store.CreateEntry("2024-03-10", "Design", 2.0, ""); err != nil {
+		t.Fatalf("CreateEntry 1: %v", err)
+	}
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry 2: %v", err)
+	}
+	if err := store.CreateEntry("2024-03-05", "Research", 1.0, ""); err != nil {
+		t.Fatalf("CreateEntry 3: %v", err)
+	}
 
 	entries, err := store.ListEntries()
 	if err != nil {
@@ -88,8 +104,15 @@ func TestListEntriesSorted(t *testing.T) {
 func TestUpdateEntry(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "Original notes")
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, "Original notes"); err != nil {
+		t.Fatalf("CreateEntry: %v", err)
+	}
 
 	err := store.UpdateEntry(1, "2024-03-16", "Design", 3.0, "Updated notes")
 	if err != nil {
@@ -111,8 +134,15 @@ func TestUpdateEntry(t *testing.T) {
 func TestDeleteEntry(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry: %v", err)
+	}
 
 	err := store.DeleteEntry(1)
 	if err != nil {

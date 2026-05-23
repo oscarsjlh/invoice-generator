@@ -34,8 +34,8 @@ func TestGenerateInvoiceSuccess(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 
-	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00)
+	require.NoError(t, ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, ""))
+	require.NoError(t, ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00))
 
 	req := newFormRequest("/invoices/generate", urlencode(map[string]string{
 		"month":        "2024-03",
@@ -59,7 +59,7 @@ func TestGenerateInvoiceFailsWhenUnrated(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 
-	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
+	require.NoError(t, ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, ""))
 
 	req := newFormRequest("/invoices/generate", urlencode(map[string]string{
 		"month":        "2024-03",
@@ -83,9 +83,9 @@ func TestInvoicePreviewReturns200(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 
-	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00)
-	ta.store.SaveSettings(testutil.SampleSettings())
+	require.NoError(t, ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, ""))
+	require.NoError(t, ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00))
+	require.NoError(t, ta.store.SaveSettings(testutil.SampleSettings()))
 
 	id, err := ta.store.GenerateInvoice("2024-03", "All", "2024-04-01", 30, testutil.SampleSettings())
 	require.NoError(t, err)
@@ -124,9 +124,9 @@ func TestDashboardRendersSuccessfully(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 
-	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00)
-	ta.store.SaveSettings(testutil.SampleSettings())
+	require.NoError(t, ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, ""))
+	require.NoError(t, ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00))
+	require.NoError(t, ta.store.SaveSettings(testutil.SampleSettings()))
 
 	req := httptest.NewRequest("GET", "/", nil)
 	ctx := WithTestStore(req.Context(), ta.store)

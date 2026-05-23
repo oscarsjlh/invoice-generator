@@ -40,12 +40,14 @@ func TestIntegrationDashboardReturns200(t *testing.T) {
 	t.Parallel()
 	server, store := newTestServer(t)
 
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	store.SaveSettings(testutil.SampleSettings())
+	require.NoError(t, store.CreateEntry("2024-03-15", "Consulting", 4.5, ""))
+	require.NoError(t, store.SaveSettings(testutil.SampleSettings()))
 
 	resp, err := http.Get(server.URL + "/")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		require.NoError(t, resp.Body.Close())
+	}()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, _ := io.ReadAll(resp.Body)
@@ -58,7 +60,9 @@ func TestIntegrationStaticFilesServed(t *testing.T) {
 
 	resp, err := http.Get(server.URL + "/static/styles.css")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		require.NoError(t, resp.Body.Close())
+	}()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -69,7 +73,9 @@ func TestIntegrationEntriesPageReturns200(t *testing.T) {
 
 	resp, err := http.Get(server.URL + "/entries")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		require.NoError(t, resp.Body.Close())
+	}()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -80,7 +86,9 @@ func TestIntegrationHealthReturns200(t *testing.T) {
 
 	resp, err := http.Get(server.URL + "/health")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		require.NoError(t, resp.Body.Close())
+	}()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -91,7 +99,9 @@ func TestIntegrationSettingsPageReturns200(t *testing.T) {
 
 	resp, err := http.Get(server.URL + "/settings")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		require.NoError(t, resp.Body.Close())
+	}()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }

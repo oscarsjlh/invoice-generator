@@ -70,16 +70,22 @@ func (m *Cicd) runGolangCILint(ctx context.Context, source *dagger.Directory) (s
 }
 
 func (m *Cicd) runGoTests(ctx context.Context, source *dagger.Directory) (string, error) {
-	out, err := dag.Container().
-		From("golang:1.26-alpine").
-		WithExec([]string{"apk", "add", "--no-cache", "nodejs", "npm", "bash", "git"}).
-		WithMountedDirectory("/src", source).
-		WithWorkdir("/src/invoice-service").
+	preparedSource := dag.Container().
+		From("node:24-alpine").
+		WithMountedDirectory("/src", source.Directory("invoice-service")).
+		WithWorkdir("/src").
 		WithExec([]string{"corepack", "enable"}).
 		WithExec([]string{"pnpm", "install", "--frozen-lockfile"}).
 		WithExec([]string{"mkdir", "-p", "static"}).
 		WithExec([]string{"cp", "node_modules/@picocss/pico/css/pico.min.css", "static/"}).
 		WithExec([]string{"cp", "node_modules/htmx.org/dist/htmx.min.js", "static/"}).
+		Directory("/src")
+
+	out, err := dag.Container().
+		From("golang:1.26-bookworm").
+		WithMountedDirectory("/src", preparedSource).
+		WithWorkdir("/src").
+		WithEnvVariable("CGO_ENABLED", "1").
 		WithExec([]string{"go", "test", "-race", "-count=1", "./..."}).
 		Stdout(ctx)
 	if err != nil {

@@ -146,7 +146,7 @@ func (a *App) invoicePDF(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.pdf"`, sanitizeHeaderValue(invoice.InvoiceNumber)))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(pdfData)))
-	w.Write(pdfData)
+	_, _ = w.Write(pdfData)
 }
 
 func (a *App) sendInvoice(w http.ResponseWriter, r *http.Request) {
@@ -226,7 +226,9 @@ func (a *App) buildPDF(invoice db.Invoice, settings db.Settings) ([]byte, error)
 	if err != nil {
 		return nil, fmt.Errorf("create temp dir: %w", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
 
 	templateBytes, err := templates.FS.ReadFile("invoice-maker.typ")
 	if err != nil {

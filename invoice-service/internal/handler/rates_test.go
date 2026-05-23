@@ -74,7 +74,7 @@ func TestDeleteRate(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 
-	ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00)
+	require.NoError(t, ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00))
 
 	req := httptest.NewRequest("POST", "/rates/1/delete", nil)
 	req.SetPathValue("id", "1")
@@ -96,7 +96,7 @@ func TestEditRateFormReturnsPartial(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 
-	ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00)
+	require.NoError(t, ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00))
 
 	req := httptest.NewRequest("GET", "/rates/1/edit", nil)
 	req.SetPathValue("id", "1")
@@ -132,7 +132,7 @@ func TestUpdateRateSuccess(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 
-	ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00)
+	require.NoError(t, ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00))
 
 	req := newFormRequest("/rates/1", urlencode(map[string]string{
 		"category":   "Design",
@@ -157,7 +157,7 @@ func TestUpdateRateMissingCategory(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 
-	ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00)
+	require.NoError(t, ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00))
 
 	req := newFormRequest("/rates/1", urlencode(map[string]string{
 		"start_date": "2024-02-01",

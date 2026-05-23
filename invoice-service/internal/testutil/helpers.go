@@ -27,7 +27,7 @@ func NewTestDB(t *testing.T) *db.Store {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		store.Close()
+		require.NoError(t, store.Close())
 	})
 
 	return store
@@ -90,7 +90,7 @@ func NewTestAuthDB(t *testing.T) *db.AuthDB {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		adb.Close()
+		require.NoError(t, adb.Close())
 	})
 
 	return adb

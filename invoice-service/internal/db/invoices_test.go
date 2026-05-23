@@ -7,9 +7,18 @@ import (
 func TestGenerateInvoice(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	store.CreateRate("Consulting", "2024-01-01", "", 150.00)
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry: %v", err)
+	}
+	if err := store.CreateRate("Consulting", "2024-01-01", "", 150.00); err != nil {
+		t.Fatalf("CreateRate: %v", err)
+	}
 
 	settings := Settings{
 		BusinessName:    "Test Business Ltd",
@@ -47,8 +56,15 @@ func TestGenerateInvoice(t *testing.T) {
 func TestGenerateInvoiceFailsWhenUnrated(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry: %v", err)
+	}
 
 	settings := Settings{BusinessName: "Test"}
 
@@ -61,11 +77,24 @@ func TestGenerateInvoiceFailsWhenUnrated(t *testing.T) {
 func TestGetInvoiceWithLines(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	store.CreateEntry("2024-03-16", "Design", 2.0, "")
-	store.CreateRate("Consulting", "2024-01-01", "", 150.00)
-	store.CreateRate("Design", "2024-01-01", "", 120.00)
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry 1: %v", err)
+	}
+	if err := store.CreateEntry("2024-03-16", "Design", 2.0, ""); err != nil {
+		t.Fatalf("CreateEntry 2: %v", err)
+	}
+	if err := store.CreateRate("Consulting", "2024-01-01", "", 150.00); err != nil {
+		t.Fatalf("CreateRate 1: %v", err)
+	}
+	if err := store.CreateRate("Design", "2024-01-01", "", 120.00); err != nil {
+		t.Fatalf("CreateRate 2: %v", err)
+	}
 
 	settings := Settings{
 		BusinessName:    "Test Business Ltd",
@@ -97,6 +126,15 @@ func TestGetInvoiceWithLines(t *testing.T) {
 func TestListInvoices(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
+
+	if err := store.CreateRate("Consulting", "2024-01-01", "", 150.00); err != nil {
+		t.Fatalf("CreateRate: %v", err)
+	}
 
 	createInvoiceForMonth(t, store, "2024-03", 150.00)
 	createInvoiceForMonth(t, store, "2024-02", 200.00)
@@ -116,9 +154,18 @@ func TestListInvoices(t *testing.T) {
 func TestCountUnratedEntries(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	store.CreateRate("Consulting", "2024-01-01", "", 150.00)
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry: %v", err)
+	}
+	if err := store.CreateRate("Consulting", "2024-01-01", "", 150.00); err != nil {
+		t.Fatalf("CreateRate: %v", err)
+	}
 
 	count, err := store.CountUnratedEntries("2024-03", "All")
 	if err != nil {
@@ -128,7 +175,9 @@ func TestCountUnratedEntries(t *testing.T) {
 		t.Errorf("count = %d, want 0", count)
 	}
 
-	store.CreateEntry("2024-03-16", "Design", 2.0, "")
+	if err := store.CreateEntry("2024-03-16", "Design", 2.0, ""); err != nil {
+		t.Fatalf("CreateEntry 2: %v", err)
+	}
 
 	count, err = store.CountUnratedEntries("2024-03", "All")
 	if err != nil {
@@ -142,6 +191,11 @@ func TestCountUnratedEntries(t *testing.T) {
 func TestInvoiceNumberGeneration(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
 	settings := Settings{
 		BusinessName:    "Test Business Ltd",
@@ -153,8 +207,12 @@ func TestInvoiceNumberGeneration(t *testing.T) {
 		PaymentTerms:    "Payment due within 30 days.",
 	}
 
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	store.CreateRate("Consulting", "2024-01-01", "", 150.00)
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry: %v", err)
+	}
+	if err := store.CreateRate("Consulting", "2024-01-01", "", 150.00); err != nil {
+		t.Fatalf("CreateRate: %v", err)
+	}
 
 	id1, err := store.GenerateInvoice("2024-03", "Consulting", "2024-04-01", 30, settings)
 	if err != nil {
@@ -165,8 +223,14 @@ func TestInvoiceNumberGeneration(t *testing.T) {
 		t.Fatalf("GenerateInvoice 2: %v", err)
 	}
 
-	invoice1, _ := store.GetInvoice(id1)
-	invoice2, _ := store.GetInvoice(id2)
+	invoice1, err := store.GetInvoice(id1)
+	if err != nil {
+		t.Fatalf("GetInvoice 1: %v", err)
+	}
+	invoice2, err := store.GetInvoice(id2)
+	if err != nil {
+		t.Fatalf("GetInvoice 2: %v", err)
+	}
 
 	if invoice1.InvoiceNumber == invoice2.InvoiceNumber {
 		t.Errorf("invoice numbers should differ: %q vs %q", invoice1.InvoiceNumber, invoice2.InvoiceNumber)
@@ -176,9 +240,18 @@ func TestInvoiceNumberGeneration(t *testing.T) {
 func TestListMonthlySummary(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	store.CreateRate("Consulting", "2024-01-01", "", 150.00)
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry: %v", err)
+	}
+	if err := store.CreateRate("Consulting", "2024-01-01", "", 150.00); err != nil {
+		t.Fatalf("CreateRate: %v", err)
+	}
 
 	summary, err := store.ListMonthlySummary()
 	if err != nil {
@@ -198,11 +271,24 @@ func TestListMonthlySummary(t *testing.T) {
 func TestFilteredSummary(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	store.CreateEntry("2024-03-16", "Design", 2.0, "")
-	store.CreateRate("Consulting", "2024-01-01", "", 150.00)
-	store.CreateRate("Design", "2024-01-01", "", 120.00)
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry 1: %v", err)
+	}
+	if err := store.CreateEntry("2024-03-16", "Design", 2.0, ""); err != nil {
+		t.Fatalf("CreateEntry 2: %v", err)
+	}
+	if err := store.CreateRate("Consulting", "2024-01-01", "", 150.00); err != nil {
+		t.Fatalf("CreateRate 1: %v", err)
+	}
+	if err := store.CreateRate("Design", "2024-01-01", "", 120.00); err != nil {
+		t.Fatalf("CreateRate 2: %v", err)
+	}
 
 	summary, totalHours, totalAmount, err := store.FilteredSummary("2024", "03")
 	if err != nil {
@@ -227,8 +313,9 @@ func TestFilteredSummary(t *testing.T) {
 
 func createInvoiceForMonth(t *testing.T, store *Store, month string, _ float64) {
 	t.Helper()
-	store.CreateEntry(month+"-15", "Consulting", 4.5, "")
-	store.CreateRate("Consulting", "2024-01-01", "", 150.00)
+	if err := store.CreateEntry(month+"-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry for %s: %v", month, err)
+	}
 	settings := Settings{
 		BusinessName:    "Test Business Ltd",
 		BusinessAddress: "123 Test St\nLondon\nSW1A 1AA",

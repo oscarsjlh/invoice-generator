@@ -76,7 +76,7 @@ func TestEntriesTableReturnsPartial(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 
-	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
+	require.NoError(t, ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, ""))
 
 	req := httptest.NewRequest("GET", "/entries/table", nil)
 	ctx := WithTestStore(req.Context(), ta.store)
@@ -95,7 +95,7 @@ func TestDeleteEntryRedirects(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 
-	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
+	require.NoError(t, ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, ""))
 
 	req := httptest.NewRequest("POST", "/entries/1/delete", nil)
 	req.SetPathValue("id", "1")
@@ -114,7 +114,7 @@ func TestEditEntryFormReturnsPartial(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 
-	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "Client meeting")
+	require.NoError(t, ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "Client meeting"))
 
 	req := httptest.NewRequest("GET", "/entries/1/edit", nil)
 	req.SetPathValue("id", "1")
@@ -150,7 +150,7 @@ func TestUpdateEntrySuccess(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 
-	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
+	require.NoError(t, ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, ""))
 
 	req := newFormRequest("/entries/1", urlencode(map[string]string{
 		"date":     "2024-04-01",
@@ -176,7 +176,7 @@ func TestUpdateEntryMissingCategory(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 
-	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
+	require.NoError(t, ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, ""))
 
 	req := newFormRequest("/entries/1", urlencode(map[string]string{
 		"date":  "2024-04-01",

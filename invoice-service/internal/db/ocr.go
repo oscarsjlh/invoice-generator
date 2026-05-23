@@ -42,7 +42,9 @@ func (s *Store) ListOCRSessions() ([]OCRSession, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list ocr sessions: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var sessions []OCRSession
 	for rows.Next() {
@@ -74,7 +76,9 @@ func (s *Store) GetSessionImages(sessionID int64) ([]OCRSessionImage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get session images: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var images []OCRSessionImage
 	for rows.Next() {
@@ -92,7 +96,9 @@ func (s *Store) SaveDraftEntries(sessionID int64, drafts []OCRDraftEntry) error 
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	if _, err := tx.Exec(`DELETE FROM ocr_draft_entries WHERE session_id = ?`, sessionID); err != nil {
 		return fmt.Errorf("clear drafts: %w", err)
@@ -105,7 +111,9 @@ func (s *Store) SaveDraftEntries(sessionID int64, drafts []OCRDraftEntry) error 
 	if err != nil {
 		return fmt.Errorf("prepare insert: %w", err)
 	}
-	defer stmt.Close()
+	defer func() {
+		_ = stmt.Close()
+	}()
 
 	for _, d := range drafts {
 		if _, err := stmt.Exec(
@@ -133,7 +141,9 @@ func (s *Store) GetDraftEntries(sessionID int64) ([]OCRDraftEntry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get draft entries: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var drafts []OCRDraftEntry
 	for rows.Next() {
@@ -196,7 +206,9 @@ func (s *Store) ConfirmDraftEntries(sessionID int64, ids []int64) (confirmed []i
 	if err != nil {
 		return nil, nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	for _, id := range ids {
 		var d OCRDraftEntry
@@ -264,15 +276,6 @@ func (s *Store) ConfirmDraftEntries(sessionID int64, ids []int64) (confirmed []i
 	}
 
 	return confirmed, skipped, nil
-}
-
-func (s *Store) countUnconfirmedDrafts(sessionID int64) (int, error) {
-	var count int
-	err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM ocr_draft_entries WHERE session_id = ? AND confirmed = 0`,
-		sessionID,
-	).Scan(&count)
-	return count, err
 }
 
 func (s *Store) DeleteOCRSession(id int64) error {

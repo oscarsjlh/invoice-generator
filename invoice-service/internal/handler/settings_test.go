@@ -18,7 +18,7 @@ func TestSettingsPageReturnsSavedValues(t *testing.T) {
 
 	settings := testutil.SampleSettings()
 	settings.DefaultDueDays = 45
-	ta.store.SaveSettings(settings)
+	require.NoError(t, ta.store.SaveSettings(settings))
 
 	req := httptest.NewRequest("GET", "/settings", nil)
 	ctx := WithTestStore(req.Context(), ta.store)

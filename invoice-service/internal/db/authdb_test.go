@@ -27,7 +27,9 @@ func setupTestAuthDB(t *testing.T) *AuthDB {
 	}
 
 	t.Cleanup(func() {
-		adb.Close()
+		if err := adb.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
 	})
 
 	return adb
@@ -69,7 +71,10 @@ func TestAuthDBGetUserByID(t *testing.T) {
 	t.Parallel()
 	adb := setupTestAuthDB(t)
 
-	id, _ := adb.CreateUser("bob", "Bob Builder")
+	id, err := adb.CreateUser("bob", "Bob Builder")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
 	user, err := adb.GetUserByID(id)
 	if err != nil {
 		t.Fatalf("GetUserByID: %v", err)
@@ -102,7 +107,10 @@ func TestAuthDBGetUserByUsername(t *testing.T) {
 	t.Parallel()
 	adb := setupTestAuthDB(t)
 
-	adb.CreateUser("charlie", "Charlie Chaplin")
+	_, err := adb.CreateUser("charlie", "Charlie Chaplin")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
 	user, err := adb.GetUserByUsernameForAuth("charlie")
 	if err != nil {
 		t.Fatalf("GetUserByUsernameForAuth: %v", err)
@@ -132,14 +140,17 @@ func TestAuthDBSaveAndGetCredentials(t *testing.T) {
 	t.Parallel()
 	adb := setupTestAuthDB(t)
 
-	id, _ := adb.CreateUser("dave", "Dave Developer")
+	id, err := adb.CreateUser("dave", "Dave Developer")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
 	cred := &webauthn.Credential{
 		ID:              []byte("credential-id-123"),
 		PublicKey:       []byte("public-key-data"),
 		AttestationType: "none",
 		Transport:       []protocol.AuthenticatorTransport{protocol.USB},
 	}
-	err := adb.SaveCredential(cred, id)
+	err = adb.SaveCredential(cred, id)
 	if err != nil {
 		t.Fatalf("SaveCredential: %v", err)
 	}
@@ -160,7 +171,10 @@ func TestAuthDBGetCredentialsEmpty(t *testing.T) {
 	t.Parallel()
 	adb := setupTestAuthDB(t)
 
-	id, _ := adb.CreateUser("eve", "Eve Empty")
+	id, err := adb.CreateUser("eve", "Eve Empty")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
 	creds, err := adb.GetCredentials(id)
 	if err != nil {
 		t.Fatalf("GetCredentials: %v", err)
@@ -174,7 +188,10 @@ func TestAuthDBCreateAndValidateSession(t *testing.T) {
 	t.Parallel()
 	adb := setupTestAuthDB(t)
 
-	id, _ := adb.CreateUser("frank", "Frank Session")
+	id, err := adb.CreateUser("frank", "Frank Session")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
 	token, err := adb.CreateSession(id, 1*time.Hour)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
@@ -216,7 +233,10 @@ func TestAuthDBValidateExpiredSession(t *testing.T) {
 	t.Parallel()
 	adb := setupTestAuthDB(t)
 
-	id, _ := adb.CreateUser("grace", "Grace Expired")
+	id, err := adb.CreateUser("grace", "Grace Expired")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
 	token, err := adb.CreateSession(id, -1*time.Hour)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)

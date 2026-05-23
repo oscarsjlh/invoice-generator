@@ -28,7 +28,9 @@ func (s *Store) ListMonthlySummary() ([]MonthlySummary, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list monthly summary: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var summary []MonthlySummary
 	for rows.Next() {
@@ -47,7 +49,9 @@ func (s *Store) ListAvailableYears() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list available years: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var years []string
 	for rows.Next() {
@@ -72,7 +76,9 @@ func (s *Store) ListAvailableMonths(year string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list available months: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var months []string
 	for rows.Next() {
@@ -113,7 +119,9 @@ func (s *Store) FilteredSummary(year, month string) ([]MonthlySummary, float64, 
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("filtered summary: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var summary []MonthlySummary
 	var totalHours, totalAmount float64
@@ -139,7 +147,9 @@ func (s *Store) ListInvoices() ([]InvoiceSummary, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list invoices: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var invoices []InvoiceSummary
 	for rows.Next() {
@@ -189,7 +199,9 @@ func (s *Store) GenerateInvoice(month, category, invoiceDate string, dueDays int
 	if err != nil {
 		return 0, fmt.Errorf("begin invoice transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	unrated, err := countUnratedEntriesTx(tx, month, category)
 	if err != nil {
@@ -318,7 +330,9 @@ func queryInvoiceLinesTx(tx *sql.Tx, month, category string) ([]InvoiceLine, flo
 	if err != nil {
 		return nil, 0, fmt.Errorf("query invoice lines: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	lines := []InvoiceLine{}
 	var total float64
@@ -393,7 +407,9 @@ func (s *Store) GetInvoice(id int64) (Invoice, error) {
 	if err != nil {
 		return Invoice{}, fmt.Errorf("list invoice lines: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	for rows.Next() {
 		var line InvoiceLine
@@ -404,46 +420,6 @@ func (s *Store) GetInvoice(id int64) (Invoice, error) {
 	}
 
 	return invoice, rows.Err()
-}
-
-func (s *Store) queryInvoiceLines(month, category string) ([]InvoiceLine, float64, error) {
-	rows, err := s.db.Query(`
-		SELECT
-			e.category,
-			ROUND(SUM(e.hours), 2) AS hours,
-			r.rate,
-			ROUND(SUM(e.hours * r.rate), 2) AS amount
-		FROM entries e
-		JOIN rates r
-			ON e.category = r.category
-			AND e.date >= r.start_date
-			AND (r.end_date = '' OR e.date <= r.end_date)
-		WHERE strftime('%Y-%m', e.date) = ?
-		  AND (? = 'All' OR e.category = ?)
-		GROUP BY e.category, r.rate
-		ORDER BY e.category ASC
-	`, month, category, category)
-	if err != nil {
-		return nil, 0, fmt.Errorf("query invoice lines: %w", err)
-	}
-	defer rows.Close()
-
-	lines := []InvoiceLine{}
-	var total float64
-	for rows.Next() {
-		var line InvoiceLine
-		if err := rows.Scan(&line.Category, &line.Hours, &line.Rate, &line.Amount); err != nil {
-			return nil, 0, fmt.Errorf("scan invoice line: %w", err)
-		}
-		total += line.Amount
-		lines = append(lines, line)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, 0, err
-	}
-
-	return lines, total, nil
 }
 
 func nextInvoiceNumber(tx *sql.Tx, month, category string) (string, error) {

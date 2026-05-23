@@ -16,7 +16,9 @@ func TestNewMultiStore(t *testing.T) {
 	if ms == nil {
 		t.Fatal("expected non-nil MultiStore")
 	}
-	ms.Close()
+	if err := ms.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
 }
 
 func TestMultiStoreForUserCreatesDB(t *testing.T) {
@@ -24,7 +26,11 @@ func TestMultiStoreForUserCreatesDB(t *testing.T) {
 	dir := t.TempDir()
 	migDir := findMigrationsDir(t)
 	ms := NewMultiStore(dir, migDir)
-	defer ms.Close()
+	defer func() {
+		if err := ms.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	}()
 
 	store, err := ms.ForUser(1)
 	if err != nil {
@@ -45,7 +51,11 @@ func TestMultiStoreForUserReturnsCached(t *testing.T) {
 	dir := t.TempDir()
 	migDir := findMigrationsDir(t)
 	ms := NewMultiStore(dir, migDir)
-	defer ms.Close()
+	defer func() {
+		if err := ms.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	}()
 
 	store1, err := ms.ForUser(1)
 	if err != nil {
@@ -67,7 +77,11 @@ func TestMultiStoreExists(t *testing.T) {
 	dir := t.TempDir()
 	migDir := findMigrationsDir(t)
 	ms := NewMultiStore(dir, migDir)
-	defer ms.Close()
+	defer func() {
+		if err := ms.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	}()
 
 	if ms.Exists(1) {
 		t.Error("Exists should be false before ForUser")
@@ -92,7 +106,11 @@ func TestMultiStoreSetLegacyStore(t *testing.T) {
 	dir := t.TempDir()
 	migDir := findMigrationsDir(t)
 	ms := NewMultiStore(dir, migDir)
-	defer ms.Close()
+	defer func() {
+		if err := ms.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	}()
 
 	legacyStore := setupTestDB(t)
 	ms.SetLegacyStore(legacyStore)
@@ -111,7 +129,11 @@ func TestMultiStoreLRUEviction(t *testing.T) {
 	dir := t.TempDir()
 	migDir := findMigrationsDir(t)
 	ms := NewMultiStoreWithLimits(dir, migDir, 2)
-	defer ms.Close()
+	defer func() {
+		if err := ms.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	}()
 
 	_, err := ms.ForUser(1)
 	if err != nil {
@@ -147,7 +169,11 @@ func TestMultiStoreIdleSweep(t *testing.T) {
 		idleMin:       1 * time.Millisecond,
 		closeCtx:      make(chan struct{}),
 	}
-	defer ms.Close()
+	defer func() {
+		if err := ms.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	}()
 
 	_, err := ms.ForUser(1)
 	if err != nil {
@@ -188,7 +214,11 @@ func TestMultiStoreConcurrentAccess(t *testing.T) {
 	dir := t.TempDir()
 	migDir := findMigrationsDir(t)
 	ms := NewMultiStore(dir, migDir)
-	defer ms.Close()
+	defer func() {
+		if err := ms.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	}()
 
 	const goroutines = 20
 	var wg sync.WaitGroup

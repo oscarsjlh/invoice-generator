@@ -7,6 +7,11 @@ import (
 func TestRateCRUD(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
 	err := store.CreateRate("Consulting", "2024-01-01", "", 150.00)
 	if err != nil {
@@ -25,9 +30,18 @@ func TestRateCRUD(t *testing.T) {
 func TestListRates(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
-	store.CreateRate("Consulting", "2024-01-01", "", 150.00)
-	store.CreateRate("Design", "2024-01-01", "", 120.00)
+	if err := store.CreateRate("Consulting", "2024-01-01", "", 150.00); err != nil {
+		t.Fatalf("CreateRate 1: %v", err)
+	}
+	if err := store.CreateRate("Design", "2024-01-01", "", 120.00); err != nil {
+		t.Fatalf("CreateRate 2: %v", err)
+	}
 
 	rates, err := store.ListRates()
 	if err != nil {
@@ -44,8 +58,15 @@ func TestListRates(t *testing.T) {
 func TestUpdateRate(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
-	store.CreateRate("Consulting", "2024-01-01", "", 150.00)
+	if err := store.CreateRate("Consulting", "2024-01-01", "", 150.00); err != nil {
+		t.Fatalf("CreateRate: %v", err)
+	}
 
 	err := store.UpdateRate(1, "Consulting", "2024-01-01", "", 175.00)
 	if err != nil {
@@ -64,8 +85,15 @@ func TestUpdateRate(t *testing.T) {
 func TestDeleteRate(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
-	store.CreateRate("Consulting", "2024-01-01", "", 150.00)
+	if err := store.CreateRate("Consulting", "2024-01-01", "", 150.00); err != nil {
+		t.Fatalf("CreateRate: %v", err)
+	}
 
 	err := store.DeleteRate(1)
 	if err != nil {
@@ -89,9 +117,18 @@ func TestDeleteRate(t *testing.T) {
 func TestListCategories(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	store.CreateRate("Design", "2024-01-01", "", 120.00)
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry: %v", err)
+	}
+	if err := store.CreateRate("Design", "2024-01-01", "", 120.00); err != nil {
+		t.Fatalf("CreateRate: %v", err)
+	}
 
 	cats, err := store.ListCategories()
 	if err != nil {
@@ -108,9 +145,18 @@ func TestListCategories(t *testing.T) {
 func TestListAvailableYears(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
-	store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
-	store.CreateEntry("2023-11-10", "Design", 2.0, "")
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry 1: %v", err)
+	}
+	if err := store.CreateEntry("2023-11-10", "Design", 2.0, ""); err != nil {
+		t.Fatalf("CreateEntry 2: %v", err)
+	}
 
 	years, err := store.ListAvailableYears()
 	if err != nil {
@@ -124,10 +170,21 @@ func TestListAvailableYears(t *testing.T) {
 func TestListAvailableMonths(t *testing.T) {
 	t.Parallel()
 	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
 
-	store.CreateEntry("2024-01-15", "Consulting", 4.5, "")
-	store.CreateEntry("2024-03-10", "Design", 2.0, "")
-	store.CreateEntry("2023-11-10", "Other", 1.0, "")
+	if err := store.CreateEntry("2024-01-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry 1: %v", err)
+	}
+	if err := store.CreateEntry("2024-03-10", "Design", 2.0, ""); err != nil {
+		t.Fatalf("CreateEntry 2: %v", err)
+	}
+	if err := store.CreateEntry("2023-11-10", "Other", 1.0, ""); err != nil {
+		t.Fatalf("CreateEntry 3: %v", err)
+	}
 
 	months, err := store.ListAvailableMonths("2024")
 	if err != nil {

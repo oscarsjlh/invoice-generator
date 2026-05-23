@@ -64,7 +64,7 @@ func TestOCRSessionStatusHandler(t *testing.T) {
 	store := ta.store
 	sessionID, err := store.CreateOCRSession()
 	require.NoError(t, err)
-	store.UpdateOCRSessionState(sessionID, "processing", "")
+	require.NoError(t, store.UpdateOCRSessionState(sessionID, "processing", ""))
 
 	idStr := strconv.FormatInt(sessionID, 10)
 	req := httptest.NewRequest("GET", "/ocr/import/"+idStr, nil)

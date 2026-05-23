@@ -33,7 +33,9 @@ func main() {
 		logger.Error("open auth database", "error", err)
 		os.Exit(1)
 	}
-	defer authDB.Close()
+	defer func() {
+		_ = authDB.Close()
+	}()
 
 	var uid int64
 	if *userID != 0 {
@@ -67,7 +69,9 @@ func main() {
 		logger.Error("open source database", "error", err)
 		os.Exit(1)
 	}
-	defer srcDB.Close()
+	defer func() {
+		_ = srcDB.Close()
+	}()
 
 	multiStore := db.NewMultiStore(cfg.UserDBDir, cfg.MigrationsDir)
 	userStore, err := multiStore.ForUser(uid)
@@ -75,16 +79,24 @@ func main() {
 		logger.Error("open user database", "user_id", uid, "error", err)
 		os.Exit(1)
 	}
-	defer multiStore.Close()
+	defer func() {
+		_ = multiStore.Close()
+	}()
 
 	// Check if target already has data
 	var entryCount int
-	userStore.DB().QueryRow(`SELECT COUNT(*) FROM entries`).Scan(&entryCount)
+	if err := userStore.DB().QueryRow(`SELECT COUNT(*) FROM entries`).Scan(&entryCount); err != nil {
+		logger.Error("count existing entries", "error", err)
+		os.Exit(1)
+	}
 	if entryCount > 0 {
 		logger.Warn("target database already has entries", "count", entryCount)
 		fmt.Print("Continue? (y/N): ")
 		var response string
-		fmt.Scanln(&response)
+		if _, err := fmt.Scanln(&response); err != nil {
+			logger.Error("read confirmation", "error", err)
+			os.Exit(1)
+		}
 		if response != "y" && response != "Y" {
 			logger.Info("migration cancelled")
 			os.Exit(0)
@@ -112,21 +124,27 @@ func migrateEntries(src, dst *sql.DB, logger *slog.Logger) {
 		logger.Warn("no entries to migrate", "error", err)
 		return
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	tx, err := dst.Begin()
 	if err != nil {
 		logger.Error("begin transaction", "error", err)
 		return
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	stmt, err := tx.Prepare(`INSERT INTO entries (date, category, hours, notes, created_at) VALUES (?, ?, ?, ?, ?)`)
 	if err != nil {
 		logger.Error("prepare statement", "error", err)
 		return
 	}
-	defer stmt.Close()
+	defer func() {
+		_ = stmt.Close()
+	}()
 
 	count := 0
 	for rows.Next() {
@@ -155,21 +173,27 @@ func migrateRates(src, dst *sql.DB, logger *slog.Logger) {
 		logger.Warn("no rates to migrate", "error", err)
 		return
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	tx, err := dst.Begin()
 	if err != nil {
 		logger.Error("begin transaction", "error", err)
 		return
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	stmt, err := tx.Prepare(`INSERT INTO rates (category, start_date, end_date, rate, created_at) VALUES (?, ?, ?, ?, ?)`)
 	if err != nil {
 		logger.Error("prepare statement", "error", err)
 		return
 	}
-	defer stmt.Close()
+	defer func() {
+		_ = stmt.Close()
+	}()
 
 	count := 0
 	for rows.Next() {
@@ -198,28 +222,36 @@ func migrateInvoices(src, dst *sql.DB, logger *slog.Logger) {
 		logger.Warn("no invoices to migrate", "error", err)
 		return
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	tx, err := dst.Begin()
 	if err != nil {
 		logger.Error("begin transaction", "error", err)
 		return
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	stmt, err := tx.Prepare(`INSERT INTO invoices (invoice_number, month, category, invoice_date, due_date, subtotal, total, business_name, business_address, bank_name, account_name, account_number, sort_code, payment_terms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		logger.Error("prepare invoice statement", "error", err)
 		return
 	}
-	defer stmt.Close()
+	defer func() {
+		_ = stmt.Close()
+	}()
 
 	lineStmt, err := tx.Prepare(`INSERT INTO invoice_lines (invoice_id, category, hours, rate, amount) VALUES ((SELECT id FROM invoices WHERE invoice_number = ?), ?, ?, ?, ?)`)
 	if err != nil {
 		logger.Error("prepare line statement", "error", err)
 		return
 	}
-	defer lineStmt.Close()
+	defer func() {
+		_ = lineStmt.Close()
+	}()
 
 	count := 0
 	lineCount := 0
@@ -232,7 +264,10 @@ func migrateInvoices(src, dst *sql.DB, logger *slog.Logger) {
 		}
 		// Check for duplicate invoice number
 		var existing int
-		dst.QueryRow(`SELECT COUNT(*) FROM invoices WHERE invoice_number = ?`, invNum).Scan(&existing)
+		if err := dst.QueryRow(`SELECT COUNT(*) FROM invoices WHERE invoice_number = ?`, invNum).Scan(&existing); err != nil {
+			logger.Error("check duplicate invoice", "invoice_number", invNum, "error", err)
+			continue
+		}
 		if existing > 0 {
 			logger.Warn("skipping duplicate invoice", "invoice_number", invNum)
 			continue
@@ -259,7 +294,9 @@ func migrateInvoices(src, dst *sql.DB, logger *slog.Logger) {
 			}
 			lineCount++
 		}
-		lineRows.Close()
+		if err := lineRows.Close(); err != nil {
+			logger.Warn("close invoice lines rows", "invoice_number", invNum, "error", err)
+		}
 		count++
 	}
 	if err := tx.Commit(); err != nil {
@@ -275,21 +312,27 @@ func migrateSettings(src, dst *sql.DB, logger *slog.Logger) {
 		logger.Warn("no settings to migrate", "error", err)
 		return
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	tx, err := dst.Begin()
 	if err != nil {
 		logger.Error("begin transaction", "error", err)
 		return
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	stmt, err := tx.Prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`)
 	if err != nil {
 		logger.Error("prepare settings statement", "error", err)
 		return
 	}
-	defer stmt.Close()
+	defer func() {
+		_ = stmt.Close()
+	}()
 
 	count := 0
 	for rows.Next() {

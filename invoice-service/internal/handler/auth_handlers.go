@@ -59,7 +59,9 @@ func (a *App) beginRegistration(w http.ResponseWriter, r *http.Request) {
 func (a *App) finishRegistration(w http.ResponseWriter, r *http.Request) {
 	logger := LoggerFromContext(r.Context())
 	body, err := io.ReadAll(r.Body)
-	r.Body.Close()
+	if closeErr := r.Body.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
@@ -122,7 +124,9 @@ func (a *App) beginLogin(w http.ResponseWriter, r *http.Request) {
 func (a *App) finishLogin(w http.ResponseWriter, r *http.Request) {
 	logger := LoggerFromContext(r.Context())
 	body, err := io.ReadAll(r.Body)
-	r.Body.Close()
+	if closeErr := r.Body.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
@@ -174,7 +178,7 @@ func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 var _ = protocol.CredentialCreation{}

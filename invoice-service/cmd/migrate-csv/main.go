@@ -32,7 +32,9 @@ func main() {
 		logger.Error("open database", "error", err)
 		os.Exit(1)
 	}
-	defer store.Close()
+	defer func() {
+		_ = store.Close()
+	}()
 
 	if err := store.Migrate(cfg.MigrationsDir); err != nil {
 		logger.Error("run migrations", "error", err)
@@ -132,7 +134,9 @@ func readCSV(path string) ([][]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open csv %s: %w", path, err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	reader := csv.NewReader(file)
 	reader.FieldsPerRecord = -1

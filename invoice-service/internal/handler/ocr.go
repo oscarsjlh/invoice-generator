@@ -72,10 +72,10 @@ func (a *App) ocrStartSession(w http.ResponseWriter, r *http.Request) {
 	cleanupNeeded := true
 	defer func() {
 		if cleanupNeeded {
-			store.DeleteOCRSession(sessionID)
+			_ = store.DeleteOCRSession(sessionID)
 			for _, f := range uploadedFiles {
-				os.Remove(f)
-				os.Remove(f + ".processed.jpg")
+				_ = os.Remove(f)
+				_ = os.Remove(f + ".processed.jpg")
 			}
 		}
 	}()
@@ -93,19 +93,25 @@ func (a *App) ocrStartSession(w http.ResponseWriter, r *http.Request) {
 
 		dst, err := os.Create(savedPath)
 		if err != nil {
-			src.Close()
+			_ = src.Close()
 			http.Error(w, fmt.Sprintf("save uploaded file: %v", err), http.StatusInternalServerError)
 			return
 		}
 
 		if _, err := io.Copy(dst, src); err != nil {
-			src.Close()
-			dst.Close()
+			_ = src.Close()
+			_ = dst.Close()
 			http.Error(w, fmt.Sprintf("copy uploaded file: %v", err), http.StatusInternalServerError)
 			return
 		}
-		src.Close()
-		dst.Close()
+		if err := src.Close(); err != nil {
+			http.Error(w, fmt.Sprintf("close uploaded file: %v", err), http.StatusInternalServerError)
+			return
+		}
+		if err := dst.Close(); err != nil {
+			http.Error(w, fmt.Sprintf("finalize uploaded file: %v", err), http.StatusInternalServerError)
+			return
+		}
 
 		if err := ocr.ValidateImageFile(savedPath); err != nil {
 			http.Error(w, "Bad request", http.StatusBadRequest)
@@ -301,8 +307,8 @@ func (a *App) ocrDeleteSession(w http.ResponseWriter, r *http.Request) {
 	images, _ := store.GetSessionImages(id)
 	for _, img := range images {
 		if img.FilePath != "" {
-			os.Remove(img.FilePath)
-			os.Remove(img.FilePath + ".processed.jpg")
+			_ = os.Remove(img.FilePath)
+			_ = os.Remove(img.FilePath + ".processed.jpg")
 		}
 	}
 
@@ -328,7 +334,7 @@ func (a *App) processOCRSession(sessionID int64, userID int64) {
 
 	images, err := store.GetSessionImages(sessionID)
 	if err != nil {
-		store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("get images: %v", err))
+		_ = store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("get images: %v", err))
 		return
 	}
 
@@ -339,13 +345,13 @@ func (a *App) processOCRSession(sessionID int64, userID int64) {
 
 	categories, err := store.ListCategories()
 	if err != nil {
-		store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("list categories: %v", err))
+		_ = store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("list categories: %v", err))
 		return
 	}
 
 	rates, err := store.ListRates()
 	if err != nil {
-		store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("list rates: %v", err))
+		_ = store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("list rates: %v", err))
 		return
 	}
 
@@ -380,7 +386,7 @@ func (a *App) processOCRSession(sessionID int64, userID int64) {
 	}
 
 	if err != nil {
-		store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("OCR processing failed: %v", err))
+		_ = store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("OCR processing failed: %v", err))
 		return
 	}
 
@@ -416,9 +422,9 @@ func (a *App) processOCRSession(sessionID int64, userID int64) {
 	}
 
 	if err := store.SaveDraftEntries(sessionID, drafts); err != nil {
-		store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("save drafts: %v", err))
+		_ = store.UpdateOCRSessionState(sessionID, "failed", fmt.Sprintf("save drafts: %v", err))
 		return
 	}
 
-	store.UpdateOCRSessionState(sessionID, "review_ready", "")
+	_ = store.UpdateOCRSessionState(sessionID, "review_ready", "")
 }

@@ -21,7 +21,9 @@ func ValidateImageFile(filePath string) error {
 	if err != nil {
 		return fmt.Errorf("cannot open image: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	_, format, err := image.DecodeConfig(file)
 	if err != nil {
@@ -41,7 +43,9 @@ func PreprocessImage(srcPath, dstPath string) error {
 	if err != nil {
 		return fmt.Errorf("open source: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	img, _, err := image.Decode(file)
 	if err != nil {
@@ -91,7 +95,9 @@ func PreprocessImage(srcPath, dstPath string) error {
 	if err != nil {
 		return fmt.Errorf("create destination: %w", err)
 	}
-	defer outFile.Close()
+	defer func() {
+		_ = outFile.Close()
+	}()
 
 	return jpeg.Encode(outFile, newImg, &jpeg.Options{Quality: 85})
 }
