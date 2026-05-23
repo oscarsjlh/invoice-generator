@@ -19,12 +19,12 @@ FROM alpine:3.23 AS runtime
 RUN apk add --no-cache wget font-noto
 
 RUN wget -O - 'https://github.com/typst/typst/releases/download/v0.13.1/typst-x86_64-unknown-linux-musl.tar.xz' 2>/dev/null \
-    | tar xJ -C /usr/local/bin --strip-components=1 typst-x86_64-unknown-linux-musl/typst \
-    && chmod +x /usr/local/bin/typst
+  | tar xJ -C /usr/local/bin --strip-components=1 typst-x86_64-unknown-linux-musl/typst \
+  && chmod +x /usr/local/bin/typst
 
 RUN adduser -D -H -h /app -u 1000 app \
-    && mkdir -p /app/data /app/migrations /app/auth-migrations \
-    && chown app:app /app /app/data
+  && mkdir -p /app/data /app/migrations /app/auth-migrations \
+  && chown app:app /app /app/data
 
 COPY --from=build /out/invoice-app /app/
 COPY migrations /app/migrations
@@ -43,7 +43,7 @@ COPY --from=runtime --chown=1000:1000 /app /app
 WORKDIR /app
 
 ENV ADDRESS=:8080 \
-    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+  SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
 USER 1000:1000
 EXPOSE 8080

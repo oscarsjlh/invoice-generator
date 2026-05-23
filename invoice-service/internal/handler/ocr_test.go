@@ -37,7 +37,7 @@ func TestOCRUploadPageWhenEnabled(t *testing.T) {
 		AuthEnabled: false,
 		OCREnabled:  true,
 	}
-	logger := NewLogger("error", "text")
+	logger := NewLogger("error", "text", true)
 	migDir := testutil.MigrationsDir(t)
 	multiStore := db.NewMultiStore(t.TempDir(), migDir)
 	multiStore.SetLegacyStore(store)

@@ -31,7 +31,7 @@ func newTestAppWithAuth(t *testing.T) *testAppWithAuth {
 		AuthEnabled:    true,
 		DefaultDueDays: 30,
 	}
-	logger := NewLogger("error", "text")
+	logger := NewLogger("error", "text", true)
 
 	wm, err := auth.NewWebAuthnManager(adb, auth.AuthConfig{
 		RPDisplayName: "Test App",

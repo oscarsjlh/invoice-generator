@@ -319,7 +319,7 @@ func TestAuthMiddlewareDisabledWithLegacyStore(t *testing.T) {
 		Address:     ":8080",
 		AuthEnabled: false,
 	}
-	logger := NewLogger("error", "text")
+	logger := NewLogger("error", "text", false)
 
 	migDir := testutil.MigrationsDir(t)
 	multiStore := db.NewMultiStore(t.TempDir(), migDir)

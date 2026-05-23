@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"dagger/cicd/internal/dagger"
@@ -15,19 +14,68 @@ const (
 	ocrImageRepo     = "registry.oscarcorner.com/invoices-ocr"
 )
 
-var releaseTagPattern = regexp.MustCompile(`^v.+`)
+// var releaseTagPattern = regexp.MustCompile(`^v.+`)
 
 type Cicd struct{}
 
-// TestInvoiceService runs the invoice-service test suite.
-func (m *Cicd) TestInvoiceService(ctx context.Context) (string, error) {
-	src := dag.CurrentModule().Source().Directory("..")
+// Ci runs lint, all Go tests, image builds, vulnerability scans, and publish.
+func (m *Cicd) Ci(ctx context.Context, source *dagger.Directory, tag string) ([]string, error) {
+	if source == nil {
+		return nil, fmt.Errorf("source is required (pass --source=.)")
+	}
+	if strings.TrimSpace(tag) == "" {
+		return nil, fmt.Errorf("tag is required")
+	}
+
+	if _, err := m.runGolangCILint(ctx, source); err != nil {
+		return nil, err
+	}
+	if _, err := m.runGoTests(ctx, source); err != nil {
+		return nil, err
+	}
+
+	invoiceImage := source.Directory("invoice-service").DockerBuild()
+	ocrImage := source.Directory("ocr-service").DockerBuild()
+
+	if _, err := m.scanWithGrype(ctx, invoiceImage, "invoice-service"); err != nil {
+		return nil, err
+	}
+	if _, err := m.scanWithGrype(ctx, ocrImage, "ocr-service"); err != nil {
+		return nil, err
+	}
+
+	invoiceRef, err := invoiceImage.Publish(ctx, fmt.Sprintf("%s:%s", invoiceImageRepo, tag))
+	if err != nil {
+		return nil, fmt.Errorf("publish invoice image: %w", err)
+	}
+	ocrRef, err := ocrImage.Publish(ctx, fmt.Sprintf("%s:%s", ocrImageRepo, tag))
+	if err != nil {
+		return nil, fmt.Errorf("publish ocr image: %w", err)
+	}
+
+	return []string{invoiceRef, ocrRef}, nil
+}
+
+func (m *Cicd) runGolangCILint(ctx context.Context, source *dagger.Directory) (string, error) {
+	out, err := dag.Container().
+		From("golangci/golangci-lint:v2.12.2-alpine").
+		WithMountedDirectory("/src", source.Directory("invoice-service")).
+		WithWorkdir("/src").
+		WithExec([]string{"golangci-lint", "run", "--timeout=10m", "./..."}).
+		Stdout(ctx)
+	if err != nil {
+		return "", fmt.Errorf("golangci-lint failed: %w", err)
+	}
+	return out, nil
+}
+
+func (m *Cicd) runGoTests(ctx context.Context, source *dagger.Directory) (string, error) {
 	out, err := dag.Container().
 		From("golang:1.26-alpine").
 		WithExec([]string{"apk", "add", "--no-cache", "nodejs", "npm", "bash", "git"}).
-		WithExec([]string{"corepack", "enable"}).
-		WithMountedDirectory("/src", src).
+		WithMountedDirectory("/src", source).
 		WithWorkdir("/src/invoice-service").
+		WithExec([]string{"corepack", "enable"}).
 		WithExec([]string{"pnpm", "install", "--frozen-lockfile"}).
 		WithExec([]string{"mkdir", "-p", "static"}).
 		WithExec([]string{"cp", "node_modules/@picocss/pico/css/pico.min.css", "static/"}).
@@ -35,64 +83,20 @@ func (m *Cicd) TestInvoiceService(ctx context.Context) (string, error) {
 		WithExec([]string{"go", "test", "-race", "-count=1", "./..."}).
 		Stdout(ctx)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("go tests failed: %w", err)
 	}
-	return strings.TrimSpace(out), nil
+	return out, nil
 }
 
-// BuildAndPublishInvoiceImage builds and publishes invoice-service image.
-func (m *Cicd) BuildAndPublishInvoiceImage(ctx context.Context, versionTag string, pushLatest bool) ([]string, error) {
-	return m.publishImage(ctx, versionTag, pushLatest, "invoice-service", invoiceImageRepo)
-}
-
-// BuildAndPublishOcrImage builds and publishes ocr-service image.
-func (m *Cicd) BuildAndPublishOcrImage(ctx context.Context, versionTag string, pushLatest bool) ([]string, error) {
-	return m.publishImage(ctx, versionTag, pushLatest, "ocr-service", ocrImageRepo)
-}
-
-// Release runs tests and publishes release images for a git tag.
-func (m *Cicd) Release(ctx context.Context, tag string) ([]string, error) {
-	if !releaseTagPattern.MatchString(tag) {
-		return nil, fmt.Errorf("invalid tag %q: expected format v*", tag)
-	}
-	if _, err := m.TestInvoiceService(ctx); err != nil {
-		return nil, fmt.Errorf("invoice-service tests failed: %w", err)
-	}
-
-	invoiceRefs, err := m.BuildAndPublishInvoiceImage(ctx, tag, true)
+func (m *Cicd) scanWithGrype(ctx context.Context, image *dagger.Container, imageName string) (string, error) {
+	tarball := image.AsTarball()
+	out, err := dag.Container().
+		From("anchore/grype:v0.94.0").
+		WithMountedFile("/tmp/image.tar", tarball).
+		WithExec([]string{"grype", "oci-archive:/tmp/image.tar", "--fail-on", "high"}).
+		Stdout(ctx)
 	if err != nil {
-		return nil, err
+		return "", fmt.Errorf("grype scan failed for %s: %w", imageName, err)
 	}
-	ocrRefs, err := m.BuildAndPublishOcrImage(ctx, tag, true)
-	if err != nil {
-		return nil, err
-	}
-
-	return append(invoiceRefs, ocrRefs...), nil
-}
-
-func (m *Cicd) publishImage(ctx context.Context, versionTag string, pushLatest bool, serviceDir string, repo string) ([]string, error) {
-	if !releaseTagPattern.MatchString(versionTag) {
-		return nil, fmt.Errorf("invalid release tag %q: expected format v*", versionTag)
-	}
-	src := dag.CurrentModule().Source().Directory("..").Directory(serviceDir)
-	container := src.
-		DockerBuild(dagger.DirectoryDockerBuildOpts{Platform: "linux/amd64"})
-
-	publishedRefs := make([]string, 0, 2)
-	versionRef, err := container.Publish(ctx, fmt.Sprintf("%s:%s", repo, versionTag))
-	if err != nil {
-		return nil, fmt.Errorf("failed to publish %s:%s: %w", repo, versionTag, err)
-	}
-	publishedRefs = append(publishedRefs, versionRef)
-
-	if pushLatest {
-		latestRef, err := container.Publish(ctx, fmt.Sprintf("%s:latest", repo))
-		if err != nil {
-			return nil, fmt.Errorf("failed to publish %s:latest: %w", repo, err)
-		}
-		publishedRefs = append(publishedRefs, latestRef)
-	}
-
-	return publishedRefs, nil
+	return out, nil
 }
