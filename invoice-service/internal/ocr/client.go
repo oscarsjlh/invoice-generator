@@ -17,6 +17,11 @@ type Client struct {
 	httpClient *http.Client
 }
 
+// Extractor is the interface for extracting data from OCR images.
+type Extractor interface {
+	Extract(images []string, hints ContextHint, rates []RateHint, sessionID int64) (*OCRResponse, error)
+}
+
 func NewClient(baseURL string) *Client {
 	return &Client{
 		baseURL: baseURL,

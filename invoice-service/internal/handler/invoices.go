@@ -205,6 +205,7 @@ func (a *App) sendInvoice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := email.SendInvoice(
+		nil,
 		settings.CustomerEmail,
 		customerName,
 		cfg.SMTPFrom,

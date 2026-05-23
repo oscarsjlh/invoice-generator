@@ -360,7 +360,12 @@ func (a *App) processOCRSession(sessionID int64, userID int64) {
 	}
 
 	var result *ocr.OCRResponse
-	if a.cfg.OCRServiceURL != "" {
+	if a.ocrClient != nil {
+		result, err = a.ocrClient.Extract(imagePaths, ocr.ContextHint{
+			Categories: categories,
+			SendRates:  true,
+		}, rateHints, sessionID)
+	} else if a.cfg.OCRServiceURL != "" {
 		client := ocr.NewClient(a.cfg.OCRServiceURL)
 		result, err = client.Extract(imagePaths, ocr.ContextHint{
 			Categories: categories,

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"invoice-app/internal/db"
+	"invoice-app/internal/testutil"
 )
 
 func TestInvoicesPageReturns200(t *testing.T) {
@@ -85,25 +85,9 @@ func TestInvoicePreviewReturns200(t *testing.T) {
 
 	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
 	ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00)
-	ta.store.SaveSettings(db.Settings{
-		BusinessName:    "Test Business Ltd",
-		BusinessAddress: "123 Test St\nLondon\nSW1A 1AA",
-		BankName:        "Test Bank",
-		AccountName:     "Test Account",
-		AccountNumber:   "12345678",
-		SortCode:        "12-34-56",
-		PaymentTerms:    "Payment due within 30 days.",
-	})
+	ta.store.SaveSettings(testutil.SampleSettings())
 
-	id, err := ta.store.GenerateInvoice("2024-03", "All", "2024-04-01", 30, db.Settings{
-		BusinessName:    "Test Business Ltd",
-		BusinessAddress: "123 Test St\nLondon\nSW1A 1AA",
-		BankName:        "Test Bank",
-		AccountName:     "Test Account",
-		AccountNumber:   "12345678",
-		SortCode:        "12-34-56",
-		PaymentTerms:    "Payment due within 30 days.",
-	})
+	id, err := ta.store.GenerateInvoice("2024-03", "All", "2024-04-01", 30, testutil.SampleSettings())
 	require.NoError(t, err)
 
 	req := httptest.NewRequest("GET", fmt.Sprintf("/invoices/%d", id), nil)
@@ -134,4 +118,25 @@ func TestInvoicePreview404(t *testing.T) {
 
 	resp := w.Result()
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+func TestDashboardRendersSuccessfully(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+
+	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
+	ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00)
+	ta.store.SaveSettings(testutil.SampleSettings())
+
+	req := httptest.NewRequest("GET", "/", nil)
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	ta.app.dashboard(w, req)
+
+	resp := w.Result()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "Dashboard")
 }

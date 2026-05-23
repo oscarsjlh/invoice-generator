@@ -12,22 +12,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"invoice-app/internal/db"
+	"invoice-app/internal/testutil"
 )
 
 func TestFullInvoiceWorkflow(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 
-	ta.store.SaveSettings(db.Settings{
-		BusinessName:    "Test Business Ltd",
-		BusinessAddress: "123 Test St\nLondon\nSW1A 1AA",
-		BankName:        "Test Bank",
-		AccountName:     "Test Account",
-		AccountNumber:   "12345678",
-		SortCode:        "12-34-56",
-		PaymentTerms:    "Payment due within 30 days.",
-		DefaultDueDays:  30,
-	})
+	ta.store.SaveSettings(testutil.SampleSettings())
 
 	createEntryViaHTTP(t, ta.app, ta.store, "2024-03-15", "Consulting", "4.5", "Client meeting")
 	createEntryViaHTTP(t, ta.app, ta.store, "2024-03-16", "Design", "2.0", "UI review")

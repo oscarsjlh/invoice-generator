@@ -18,6 +18,7 @@ import (
 	"invoice-app/internal/auth"
 	"invoice-app/internal/config"
 	"invoice-app/internal/db"
+	"invoice-app/internal/ocr"
 	"invoice-app/static"
 	"invoice-app/templates"
 )
@@ -55,6 +56,7 @@ type App struct {
 	cfg         config.Config
 	logger      *slog.Logger
 	baseTmpl    *template.Template
+	ocrClient   ocr.Extractor
 	ocrWg       sync.WaitGroup
 	authEnabled bool
 	legacyStore *db.Store
@@ -163,6 +165,11 @@ func (a *App) WaitForOCR() {
 
 func (a *App) SetLegacyStore(store *db.Store) {
 	a.legacyStore = store
+}
+
+// SetOCRClient sets the OCR extractor for testing.
+func (a *App) SetOCRClient(client ocr.Extractor) {
+	a.ocrClient = client
 }
 
 func (a *App) renderPage(w http.ResponseWriter, r *http.Request, status int, page string, data any, extra ...string) {

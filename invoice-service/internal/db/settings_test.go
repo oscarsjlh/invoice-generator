@@ -1,17 +1,14 @@
-package db_test
+package db
 
 import (
 	"testing"
-
-	"invoice-app/internal/db"
-	"invoice-app/internal/testutil"
 )
 
 func TestSaveAndLoadSettings(t *testing.T) {
 	t.Parallel()
-	store := testutil.NewTestDB(t)
+	store := setupTestDB(t)
 
-	settings := db.Settings{
+	settings := Settings{
 		BusinessName:    "Test Business Ltd",
 		BusinessAddress: "123 Test St\nLondon\nSW1A 1AA",
 		BankName:        "Test Bank",
@@ -63,10 +60,8 @@ func TestSaveAndLoadSettings(t *testing.T) {
 
 func TestLoadSettingsReturnsDefaultsWhenNoneSaved(t *testing.T) {
 	t.Parallel()
-	store := testutil.NewTestDB(t)
+	store := setupTestDB(t)
 
-	// The migration inserts default settings with empty values.
-	// LoadSettings returns a zero-value struct except for DefaultDueDays (30).
 	settings, err := store.LoadSettings()
 	if err != nil {
 		t.Fatalf("LoadSettings: %v", err)
@@ -75,7 +70,6 @@ func TestLoadSettingsReturnsDefaultsWhenNoneSaved(t *testing.T) {
 	if settings.DefaultDueDays != 30 {
 		t.Errorf("DefaultDueDays = %d, want 30", settings.DefaultDueDays)
 	}
-	// Business fields should be empty strings (set by migration)
 	if settings.BusinessName != "" {
 		t.Errorf("BusinessName = %q, want empty", settings.BusinessName)
 	}
