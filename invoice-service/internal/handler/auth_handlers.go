@@ -35,6 +35,7 @@ type beginRegisterRequest struct {
 }
 
 func (a *App) beginRegistration(w http.ResponseWriter, r *http.Request) {
+	logger := LoggerFromContext(r.Context())
 	var req beginRegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
@@ -43,7 +44,7 @@ func (a *App) beginRegistration(w http.ResponseWriter, r *http.Request) {
 
 	sid, options, err := a.webAuthn.BeginRegistration(req.Username, req.DisplayName)
 	if err != nil {
-		a.logger.Warn("begin registration failed", "error", err)
+		logger.Warn("begin_registration_failed", "event", "begin_registration_failed", "component", "auth", "operation", "begin_registration", "username_hash", RedactEmail(req.Username), "error", err)
 		// avoid leaking details to client
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "registration failed"})
 		return
@@ -56,6 +57,7 @@ func (a *App) beginRegistration(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) finishRegistration(w http.ResponseWriter, r *http.Request) {
+	logger := LoggerFromContext(r.Context())
 	body, err := io.ReadAll(r.Body)
 	r.Body.Close()
 	if err != nil {
@@ -75,7 +77,7 @@ func (a *App) finishRegistration(w http.ResponseWriter, r *http.Request) {
 
 	userID, credential, err := a.webAuthn.FinishRegistration(req.SessionID, r)
 	if err != nil {
-		a.logger.Warn("finish registration failed", "error", err)
+		logger.Warn("finish_registration_failed", "event", "finish_registration_failed", "component", "auth", "operation", "finish_registration", "error", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "registration failed"})
 		return
 	}
@@ -83,7 +85,7 @@ func (a *App) finishRegistration(w http.ResponseWriter, r *http.Request) {
 	_ = credential
 
 	if err := a.sessions.CreateSession(w, r, userID); err != nil {
-		a.logger.Error("create session after registration", "error", err)
+		logger.Error("create_session_after_registration_failed", "event", "create_session_after_registration_failed", "component", "auth", "operation", "create_session", "user_id", userID, "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -96,6 +98,7 @@ type beginLoginRequest struct {
 }
 
 func (a *App) beginLogin(w http.ResponseWriter, r *http.Request) {
+	logger := LoggerFromContext(r.Context())
 	var req beginLoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
@@ -104,7 +107,7 @@ func (a *App) beginLogin(w http.ResponseWriter, r *http.Request) {
 
 	sid, options, userID, err := a.webAuthn.BeginLogin(req.Username)
 	if err != nil {
-		a.logger.Warn("begin login failed", "error", err)
+		logger.Warn("begin_login_failed", "event", "begin_login_failed", "component", "auth", "operation", "begin_login", "username_hash", RedactEmail(req.Username), "error", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "login failed"})
 		return
 	}
@@ -117,6 +120,7 @@ func (a *App) beginLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) finishLogin(w http.ResponseWriter, r *http.Request) {
+	logger := LoggerFromContext(r.Context())
 	body, err := io.ReadAll(r.Body)
 	r.Body.Close()
 	if err != nil {
@@ -136,13 +140,13 @@ func (a *App) finishLogin(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := a.webAuthn.FinishLogin(req.SessionID, r)
 	if err != nil {
-		a.logger.Warn("finish login failed", "error", err)
+		logger.Warn("finish_login_failed", "event", "finish_login_failed", "component", "auth", "operation", "finish_login", "error", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "login failed"})
 		return
 	}
 
 	if err := a.sessions.CreateSession(w, r, userID); err != nil {
-		a.logger.Error("create session after login", "error", err)
+		logger.Error("create_session_after_login_failed", "event", "create_session_after_login_failed", "component", "auth", "operation", "create_session", "user_id", userID, "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -151,12 +155,13 @@ func (a *App) finishLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) logout(w http.ResponseWriter, r *http.Request) {
+	logger := LoggerFromContext(r.Context())
 	// Simple CSRF double-submit check: compare csrf cookie to form value
 	if err := r.ParseForm(); err == nil {
 		formToken := r.FormValue("csrf_token")
 		cookie, err := r.Cookie("csrf_token")
 		if err != nil || cookie.Value == "" || cookie.Value != formToken {
-			a.logger.Warn("logout csrf mismatch", "err", err)
+			logger.Warn("logout_csrf_mismatch", "event", "logout_csrf_mismatch", "component", "auth", "operation", "logout", "error", err)
 			http.Error(w, "invalid request", http.StatusBadRequest)
 			return
 		}

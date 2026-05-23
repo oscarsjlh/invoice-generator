@@ -124,7 +124,7 @@ func newTestApp(t *testing.T) *testApp {
 		OCREnabled:     false,
 		DefaultDueDays: 30,
 	}
-	logger := NewLogger("error", "text")
+	logger := NewLogger("error", "text", false)
 	multiStore := db.NewMultiStore(t.TempDir(), testutil.MigrationsDir(t))
 	multiStore.SetLegacyStore(store)
 	return &testApp{app: New(multiStore, nil, nil, nil, cfg, logger), store: store}
