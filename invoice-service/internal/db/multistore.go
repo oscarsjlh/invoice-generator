@@ -64,6 +64,10 @@ func (m *MultiStore) ForUser(userID int64) (*Store, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.legacyStore != nil {
+		return m.legacyStore, nil
+	}
+
 	if entry, ok := m.stores[userID]; ok {
 		entry.lastUsed = time.Now()
 		return entry.store, nil

@@ -298,6 +298,25 @@ func (a *App) authMiddleware(next http.Handler) http.Handler {
 				http.Error(w, "auth disabled but no legacy store configured", http.StatusInternalServerError)
 				return
 			}
+			if isSafeMethod(r.Method) {
+				if _, err := r.Cookie("csrf_token"); err != nil {
+					csrf := make([]byte, 16)
+					if _, err := rand.Read(csrf); err == nil {
+						secure := r.TLS != nil
+						if a.sessions != nil {
+							secure = a.sessions.IsSecure(r)
+						}
+						http.SetCookie(w, &http.Cookie{
+							Name:     "csrf_token",
+							Value:    base64.RawURLEncoding.EncodeToString(csrf),
+							Path:     "/",
+							HttpOnly: false,
+							Secure:   secure,
+							SameSite: http.SameSiteLaxMode,
+						})
+					}
+				}
+			}
 			ctx := context.WithValue(r.Context(), contextKeyStore, a.legacyStore)
 			ctx = context.WithValue(ctx, contextKeyUser, &db.User{ID: 0, Username: "anonymous", DisplayName: "Anonymous"})
 			next.ServeHTTP(w, r.WithContext(ctx))
