@@ -1,0 +1,13 @@
+steps:
+  release:
+    image: ghcr.io/dagger/dagger:0.15.3
+    environment:
+      REGISTRY_USERNAME:
+        from_secret: registry_username
+      REGISTRY_PASSWORD:
+        from_secret: registry_password
+    commands:
+      - dagger call release --tag "$CI_COMMIT_TAG"
+    when:
+      event: tag
+      ref: refs/tags/v*
