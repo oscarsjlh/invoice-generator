@@ -5,85 +5,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{block "title" .}}Invoice App{{end}}</title>
-  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/htmx.min.js"></script>
-  <style>
-    :root { --pico-font-size: 95%; }
-    body { padding-bottom: 4rem; }
-    nav a[aria-current="page"] { font-weight: 700; }
-    .muted { color: var(--pico-muted-color); }
-    .grid-2 { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); }
-    .summary-card strong { display: block; font-size: 1.1rem; }
-    .notice { margin-bottom: 1rem; }
-    .invoice-toolbar {
-      display: flex;
-      gap: 0.75rem;
-      margin-bottom: 1rem;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-    .inline-form { display: inline; margin: 0; }
-    .inline-form button { margin: 0; }
-    .invoice-sheet {
-      background: white; color: #111827; padding: 2rem;
-      max-width: 64rem; margin: 0 auto;
-      border: 1px solid #d1d5db; border-radius: 12px;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 30px rgba(15, 23, 42, 0.08);
-    }
-    .invoice-sheet,
-    .invoice-sheet * {
-      --pico-background-color: white;
-      --pico-color: #111827;
-      --pico-muted-color: #6b7280;
-      --pico-text-color: #111827;
-      --pico-h1-color: #111827;
-      --pico-h3-color: #111827;
-      --pico-table-border-color: #d1d5db;
-      --pico-table-row-stripped-background-color: transparent;
-      --pico-primary-background: #111827;
-      --pico-primary-color: white;
-    }
-    .invoice-sheet figure {
-      margin: 1.5rem 0;
-      --pico-block-spacing-vertical: 0;
-    }
-    .invoice-sheet p, .invoice-sheet small, .invoice-sheet div {
-      --pico-color: #111827;
-      color: #111827;
-    }
-    .invoice-sheet small { color: #6b7280; }
-    .invoice-sheet table {
-      width: 100%; border-collapse: collapse;
-      background: white;
-    }
-    .invoice-sheet thead { border-bottom: 2px solid #111827; }
-    .invoice-sheet thead th {
-      text-align: left; padding: 0.6rem 0.75rem;
-      color: #111827; background: #f3f4f6;
-      font-weight: 700; font-size: 0.9rem;
-      border-bottom: 2px solid #111827;
-    }
-    .invoice-sheet tbody td {
-      padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb;
-      color: #111827; background: white;
-    }
-    .invoice-sheet tbody tr:last-child td { border-bottom: none; }
-    .invoice-sheet tfoot { border-top: 2px solid #111827; }
-    .invoice-sheet tfoot th,
-    .invoice-sheet tfoot td {
-      padding: 0.6rem 0.75rem; color: #111827;
-      background: #f3f4f6; font-weight: 700;
-    }
-    .invoice-meta, .bank-details { display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .preline { white-space: pre-line; }
-    @media print {
-      nav, .notice, .no-print, footer { display: none !important; }
-      main.container { width: 100%; max-width: none; }
-      .invoice-sheet { border: none; padding: 0; }
-      body { background: white; }
-    }
-  </style>
+  <script>
+    (function(){
+      var saved = localStorage.getItem('theme');
+      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (saved === 'dark' || (!saved && prefersDark)) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
 </head>
 <body>
   <main class="container">
@@ -100,8 +32,14 @@
         <li><a href="/settings">Settings</a></li>
       </ul>
       <ul>
+        <li>
+          <button type="button" class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
+            <svg class="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+            <svg class="icon-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          </button>
+        </li>
       {{if .User}}
-        <li><small style="color: var(--pico-muted-color);">{{.User.Username}}</small></li>
+        <li><small style="color: var(--text-muted);">{{.User.Username}}</small></li>
         <li>
           <form action="/logout" method="post" class="inline-form csrf-form">
             <input type="hidden" name="csrf_token" id="csrf-token-logout" value="">
@@ -114,6 +52,26 @@
       </ul>
     </nav>
     <script>
+      function toggleTheme() {
+        var current = document.documentElement.getAttribute('data-theme');
+        var next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+      }
+
+      document.body.addEventListener('htmx:configRequest', function(evt) {
+        function cookieValue(name) {
+          const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+          return v ? v.pop() : '';
+        }
+        const csrf = cookieValue('csrf_token');
+        if (csrf) {
+          evt.detail.headers['X-CSRF-Token'] = csrf;
+        }
+      });
+    </script>
+    {{block "content" .}}{{end}}
+    <script>
       (function(){
         function cookieValue(name) {
           const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
@@ -124,16 +82,8 @@
           const els = document.querySelectorAll('input[name="csrf_token"]');
           for (const el of els) el.value = token;
         }
-
-        document.body.addEventListener('htmx:configRequest', function(evt) {
-          const csrf = cookieValue('csrf_token');
-          if (csrf) {
-            evt.detail.headers['X-CSRF-Token'] = csrf;
-          }
-        });
       })();
     </script>
-    {{block "content" .}}{{end}}
   </main>
 </body>
 </html>

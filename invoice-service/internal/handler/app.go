@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -244,6 +246,7 @@ func (a *App) Routes() http.Handler {
 		mux.HandleFunc("POST /register/finish", a.finishRegistration)
 		mux.HandleFunc("POST /logout", a.logout)
 	}
+	mux.HandleFunc("GET /health", a.health)
 	mux.HandleFunc("GET /static/", func(w http.ResponseWriter, r *http.Request) {
 		http.StripPrefix("/static/", http.FileServerFS(static.FS)).ServeHTTP(w, r)
 	})
@@ -277,7 +280,7 @@ func (a *App) Routes() http.Handler {
 }
 
 // publicPaths are paths that do not require authentication.
-var publicPaths = []string{"/login", "/register", "/static/"}
+var publicPaths = []string{"/login", "/register", "/static/", "/health"}
 
 func isPublicPath(path string) bool {
 	for _, p := range publicPaths {
@@ -295,6 +298,25 @@ func (a *App) authMiddleware(next http.Handler) http.Handler {
 				http.Error(w, "auth disabled but no legacy store configured", http.StatusInternalServerError)
 				return
 			}
+			if isSafeMethod(r.Method) {
+				if _, err := r.Cookie("csrf_token"); err != nil {
+					csrf := make([]byte, 16)
+					if _, err := rand.Read(csrf); err == nil {
+						secure := r.TLS != nil
+						if a.sessions != nil {
+							secure = a.sessions.IsSecure(r)
+						}
+						http.SetCookie(w, &http.Cookie{
+							Name:     "csrf_token",
+							Value:    base64.RawURLEncoding.EncodeToString(csrf),
+							Path:     "/",
+							HttpOnly: false,
+							Secure:   secure,
+							SameSite: http.SameSiteLaxMode,
+						})
+					}
+				}
+			}
 			ctx := context.WithValue(r.Context(), contextKeyStore, a.legacyStore)
 			ctx = context.WithValue(ctx, contextKeyUser, &db.User{ID: 0, Username: "anonymous", DisplayName: "Anonymous"})
 			next.ServeHTTP(w, r.WithContext(ctx))
@@ -310,6 +332,22 @@ func (a *App) authMiddleware(next http.Handler) http.Handler {
 		if err != nil || user == nil {
 			a.redirect(w, r, "/login", "Please sign in")
 			return
+		}
+
+		if isSafeMethod(r.Method) {
+			if _, err := r.Cookie("csrf_token"); err != nil {
+				csrf := make([]byte, 16)
+				if _, err := rand.Read(csrf); err == nil {
+					http.SetCookie(w, &http.Cookie{
+						Name:     "csrf_token",
+						Value:    base64.RawURLEncoding.EncodeToString(csrf),
+						Path:     "/",
+						HttpOnly: false,
+						Secure:   a.sessions.IsSecure(r),
+						SameSite: http.SameSiteLaxMode,
+					})
+				}
+			}
 		}
 
 		store, err := a.multiStore.ForUser(user.ID)
@@ -453,6 +491,12 @@ func monthName(value string) string {
 		return name
 	}
 	return value
+}
+
+func (a *App) health(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"ok"}`))
 }
 
 func sanitizeHeaderValue(value string) string {

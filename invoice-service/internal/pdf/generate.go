@@ -44,6 +44,9 @@ func GenerateInvoicePDF(workDir string, templateBytes []byte, typContent string)
 }
 
 func findTypst() string {
+	if override := os.Getenv("TYPST_BIN"); override != "" {
+		return override
+	}
 	for _, name := range []string{"typst", "typst-cli"} {
 		if p, err := exec.LookPath(name); err == nil {
 			return p

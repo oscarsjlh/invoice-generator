@@ -1,6 +1,8 @@
 package handler
 
-import "net/http"
+import (
+	"net/http"
+)
 
 func CSRFMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -50,13 +52,13 @@ func extractCSRFToken(r *http.Request) string {
 		return t
 	}
 
-	if err := r.ParseForm(); err == nil {
+	if err := r.ParseMultipartForm(32 << 20); err == nil {
 		if t := r.FormValue("csrf_token"); t != "" {
 			return t
 		}
 	}
 
-	if err := r.ParseMultipartForm(32 << 20); err == nil {
+	if err := r.ParseForm(); err == nil {
 		if t := r.FormValue("csrf_token"); t != "" {
 			return t
 		}

@@ -26,6 +26,10 @@ func (s *Store) ListRates() ([]Rate, error) {
 }
 
 func (s *Store) CreateRate(category, startDate, endDate string, rate float64) error {
+	if err := s.checkRateOverlap(category, startDate, endDate, 0); err != nil {
+		return err
+	}
+
 	_, err := s.db.Exec(
 		`INSERT INTO rates (category, start_date, end_date, rate) VALUES (?, ?, ?, ?)`,
 		category,
@@ -59,12 +63,34 @@ func (s *Store) GetRate(id int64) (Rate, error) {
 }
 
 func (s *Store) UpdateRate(id int64, category, startDate, endDate string, rate float64) error {
+	if err := s.checkRateOverlap(category, startDate, endDate, id); err != nil {
+		return err
+	}
+
 	_, err := s.db.Exec(
 		`UPDATE rates SET category = ?, start_date = ?, end_date = ?, rate = ? WHERE id = ?`,
 		category, startDate, endDate, rate, id,
 	)
 	if err != nil {
 		return fmt.Errorf("update rate: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) checkRateOverlap(category, startDate, endDate string, excludeID int64) error {
+	var count int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM rates
+		WHERE category = ?
+		  AND id != ?
+		  AND (end_date = '' OR end_date >= ?)
+		  AND (? = '' OR start_date <= ?)
+	`, category, excludeID, startDate, endDate, endDate).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check rate overlap: %w", err)
+	}
+	if count > 0 {
+		return fmt.Errorf("a rate for %q covering that date range already exists", category)
 	}
 	return nil
 }

@@ -20,7 +20,7 @@
 {{end}}
 
 {{if .Session.ErrorMsg}}
-<article class="notice" style="border-color: var(--pico-del-color);">
+<article class="notice" style="border-color: var(--danger);">
   <strong>Error:</strong> {{.Session.ErrorMsg}}
 </article>
 {{end}}
@@ -46,7 +46,7 @@
         <tbody>
           {{range .Drafts}}
           {{$d := .}}
-          <tr{{if .NeedsReview}} style="background: var(--pico-mark-background-color);"{{end}}>
+          <tr{{if .NeedsReview}} style="background: var(--warning-bg);"{{end}}>
             <td>
               {{if not .Confirmed}}
               <input type="checkbox" name="draft_{{.ID}}" checked>
