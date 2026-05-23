@@ -9,18 +9,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"invoice-app/internal/db"
+	"invoice-app/internal/testutil"
 )
 
 func TestSettingsPageReturnsSavedValues(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 
-	ta.store.SaveSettings(db.Settings{
-		BusinessName:    "Test Business Ltd",
-		BusinessAddress: "123 Test St\nLondon\nSW1A 1AA",
-		DefaultDueDays:  45,
-	})
+	settings := testutil.SampleSettings()
+	settings.DefaultDueDays = 45
+	ta.store.SaveSettings(settings)
 
 	req := httptest.NewRequest("GET", "/settings", nil)
 	ctx := WithTestStore(req.Context(), ta.store)

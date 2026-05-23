@@ -17,7 +17,32 @@ type Config struct {
 	SMTPFrom string
 }
 
-func SendInvoice(to, toName, from, invoiceNumber string, pdfData []byte, cfg Config) error {
+type Dialer interface {
+	DialAndSend(m ...*gomail.Message) error
+}
+
+// gomailDialer wraps gomail.Dialer to implement the Dialer interface.
+type gomailDialer struct {
+	d *gomail.Dialer
+}
+
+func (g *gomailDialer) DialAndSend(m ...*gomail.Message) error {
+	return g.d.DialAndSend(m...)
+}
+
+// NewDialer creates a Dialer from SMTP config.
+func NewDialer(cfg Config) (Dialer, error) {
+	port, err := strconv.Atoi(cfg.SMTPPort)
+	if err != nil {
+		return nil, fmt.Errorf("invalid SMTP port %s: %w", cfg.SMTPPort, err)
+	}
+	d := gomail.NewDialer(cfg.SMTPHost, port, cfg.SMTPUser, cfg.SMTPPass)
+	d.TLSConfig = &tls.Config{ServerName: cfg.SMTPHost}
+	return &gomailDialer{d: d}, nil
+}
+
+// sendEmail is the internal implementation that accepts a Dialer.
+func sendEmail(d Dialer, to, toName, from, invoiceNumber string, pdfData []byte) error {
 	m := gomail.NewMessage()
 	m.SetHeader("From", from)
 	m.SetHeader("To", to)
@@ -33,16 +58,18 @@ Best regards`, toName, invoiceNumber)
 	m.SetBody("text/plain", body)
 	m.AttachReader(fmt.Sprintf("%s.pdf", invoiceNumber), bytes.NewReader(pdfData))
 
-	port, err := strconv.Atoi(cfg.SMTPPort)
+	return d.DialAndSend(m)
+}
+
+// SendInvoice sends an invoice email using the given Dialer.
+// If dialer is nil, it creates a new dialer from the config.
+func SendInvoice(d Dialer, to, toName, from, invoiceNumber string, pdfData []byte, cfg Config) error {
+	if d != nil {
+		return sendEmail(d, to, toName, from, invoiceNumber, pdfData)
+	}
+	dialer, err := NewDialer(cfg)
 	if err != nil {
-		return fmt.Errorf("invalid SMTP port %s: %w", cfg.SMTPPort, err)
+		return err
 	}
-
-	d := gomail.NewDialer(cfg.SMTPHost, port, cfg.SMTPUser, cfg.SMTPPass)
-	d.TLSConfig = &tls.Config{ServerName: cfg.SMTPHost}
-	if err := d.DialAndSend(m); err != nil {
-		return fmt.Errorf("send email: %w", err)
-	}
-
-	return nil
+	return sendEmail(dialer, to, toName, from, invoiceNumber, pdfData)
 }

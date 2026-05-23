@@ -110,6 +110,89 @@ func TestDeleteEntryRedirects(t *testing.T) {
 	assert.Contains(t, resp.Header.Get("Location"), "/entries")
 }
 
+func TestEditEntryFormReturnsPartial(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+
+	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "Client meeting")
+
+	req := httptest.NewRequest("GET", "/entries/1/edit", nil)
+	req.SetPathValue("id", "1")
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	ta.app.editEntryForm(w, req)
+
+	resp := w.Result()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "Consulting")
+}
+
+func TestEditEntryFormNotFound(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+
+	req := httptest.NewRequest("GET", "/entries/999/edit", nil)
+	req.SetPathValue("id", "999")
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	ta.app.editEntryForm(w, req)
+
+	resp := w.Result()
+	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+}
+
+func TestUpdateEntrySuccess(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+
+	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
+
+	req := newFormRequest("/entries/1", urlencode(map[string]string{
+		"date":     "2024-04-01",
+		"category": "Design",
+		"hours":    "3.0",
+		"notes":    "Updated notes",
+	}))
+	req.SetPathValue("id", "1")
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	ta.app.updateEntry(w, req)
+
+	resp := w.Result()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "Design")
+	assert.Contains(t, string(body), "Updated")
+}
+
+func TestUpdateEntryMissingCategory(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+
+	ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "")
+
+	req := newFormRequest("/entries/1", urlencode(map[string]string{
+		"date":  "2024-04-01",
+		"hours": "3.0",
+	}))
+	req.SetPathValue("id", "1")
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	ta.app.updateEntry(w, req)
+
+	resp := w.Result()
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
 type testApp struct {
 	app   *App
 	store *db.Store
