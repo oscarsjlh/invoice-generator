@@ -19,7 +19,7 @@ func main() {
 	ratesPath := flag.String("rates", "", "path to rates CSV")
 	flag.Parse()
 
-	logger := handler.NewLogger("info", "text")
+	logger := handler.NewLogger("info", "text", false)
 
 	if *entriesPath == "" || *ratesPath == "" {
 		logger.Error("missing required flags", "usage", "go run ./cmd/migrate-csv --entries entries.csv --rates rates.csv")
