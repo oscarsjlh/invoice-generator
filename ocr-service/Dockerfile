@@ -6,7 +6,7 @@ COPY pyproject.toml ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-dev
 
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.14-slim-bookworm AS runtime
 
 RUN adduser --system --uid 1000 app
 
