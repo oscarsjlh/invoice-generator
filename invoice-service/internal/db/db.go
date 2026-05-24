@@ -33,7 +33,7 @@ func Open(path string) (*Store, error) {
 	for _, pragma := range pragmas {
 		if _, err := db.Exec(pragma); err != nil {
 			_ = db.Close()
-			return nil, fmt.Errorf("apply pragma %q: %w", pragma, err)
+			return nil, fmt.Errorf("apply pragma %q for database %s: %w", pragma, path, err)
 		}
 	}
 

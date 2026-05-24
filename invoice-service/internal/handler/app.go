@@ -15,6 +15,8 @@ import (
 	"invoice-app/internal/db"
 	"invoice-app/internal/ocr"
 	"invoice-app/static"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 const (
@@ -195,7 +197,8 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("POST /ocr/import/{id}/confirm", a.ocrConfirmDrafts)
 	mux.HandleFunc("POST /ocr/import/{id}/delete", a.ocrDeleteSession)
 
-	return recoverMiddleware(SecurityHeadersMiddleware()(RequestLoggingMiddleware()(LoggerMiddleware(a.logger)(a.authMiddleware(CSRFMiddleware()(mux))))))
+	handler := recoverMiddleware(SecurityHeadersMiddleware()(LoggerMiddleware(a.logger)(RequestLoggingMiddleware()(a.authMiddleware(CSRFMiddleware()(mux))))))
+	return otelhttp.NewHandler(handler, "http.server")
 }
 
 // publicPaths are paths that do not require authentication.
@@ -223,7 +226,7 @@ func (a *App) authMiddleware(next http.Handler) http.Handler {
 				http.Error(w, "auth disabled but no legacy store configured", http.StatusInternalServerError)
 				return
 			}
-			ctx := context.WithValue(r.Context(), contextKeyStore, store)
+			ctx := context.WithValue(r.Context(), contextKeyStore, newTracedStore(r.Context(), store))
 			ctx = context.WithValue(ctx, contextKeyUser, user)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
@@ -249,7 +252,7 @@ func (a *App) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), contextKeyStore, store)
+		ctx := context.WithValue(r.Context(), contextKeyStore, newTracedStore(r.Context(), store))
 		ctx = context.WithValue(ctx, contextKeyUser, user)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

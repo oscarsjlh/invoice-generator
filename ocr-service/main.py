@@ -23,7 +23,24 @@ from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 import boto3
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.propagate import extract
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace import SpanKind, Status, StatusCode
 from PIL import Image
+
+tracer = trace.get_tracer("invoice-app/ocr-service")
+
+
+def setup_tracing():
+    provider = TracerProvider(resource=Resource.create({"service.name": "ocr-service"}))
+    if os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+    trace.set_tracer_provider(provider)
+    return provider.shutdown
 
 
 def prepare_image_for_bedrock(path):
@@ -202,15 +219,18 @@ class BedrockBackend:
             "If a field is unreadable, use '?'."
         )
 
-        msg_content = []
-        for path in image_paths:
-            b64 = prepare_image_for_bedrock(path)
-            msg_content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
-                }
-            )
+        with tracer.start_as_current_span("ocr.prepare_images") as span:
+            span.set_attribute("ocr.session_id", session_id)
+            span.set_attribute("ocr.image_count", len(image_paths))
+            msg_content = []
+            for path in image_paths:
+                b64 = prepare_image_for_bedrock(path)
+                msg_content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+                    }
+                )
         msg_content.append({"type": "text", "text": prompt})
 
         body = json.dumps(
@@ -221,12 +241,18 @@ class BedrockBackend:
             }
         )
 
-        start = time.time()
-        resp = self.client.invoke_model(
-            modelId=self.model,
-            body=body,
-        )
-        elapsed_ms = int((time.time() - start) * 1000)
+        with tracer.start_as_current_span("bedrock.invoke_model") as span:
+            span.set_attribute("ocr.session_id", session_id)
+            span.set_attribute("gen_ai.system", "aws.bedrock")
+            span.set_attribute("gen_ai.request.model", self.model)
+            span.set_attribute("aws.region", self.region)
+            start = time.time()
+            resp = self.client.invoke_model(
+                modelId=self.model,
+                body=body,
+            )
+            elapsed_ms = int((time.time() - start) * 1000)
+            span.set_attribute("ocr.processing_time_ms", elapsed_ms)
 
         result = json.loads(resp["body"].read())
         text = result["choices"][0]["message"]["content"]
@@ -256,61 +282,83 @@ class OCRHandler(BaseHTTPRequestHandler):
     backend = None
 
     def do_POST(self):
-        if self.path != "/ocr/extract":
-            self.send_response(404)
-            self.end_headers()
-            return
+        parent_context = extract(self.headers)
+        with tracer.start_as_current_span(
+            "POST /ocr/extract", context=parent_context, kind=SpanKind.SERVER
+        ) as span:
+            span.set_attribute("http.request.method", "POST")
+            span.set_attribute("url.path", self.path)
 
-        content_type = self.headers.get("Content-Type", "")
-        if "multipart/form-data" not in content_type:
-            self.send_error(400, "expected multipart/form-data")
-            return
+            if self.path != "/ocr/extract":
+                span.set_attribute("http.response.status_code", 404)
+                self.send_response(404)
+                self.end_headers()
+                return
 
-        boundary_raw = content_type.split("boundary=")[1]
-        boundary = boundary_raw.split(";")[0].strip().encode()
-        body = self.rfile.read(int(self.headers["Content-Length"]))
-        parts = parse_multipart(body, boundary)
+            content_type = self.headers.get("Content-Type", "")
+            if "multipart/form-data" not in content_type:
+                span.set_attribute("http.response.status_code", 400)
+                self.send_error(400, "expected multipart/form-data")
+                return
 
-        request_data = None
-        image_paths = []
-        for name, filename, data in parts:
-            if name == "request":
-                request_data = json.loads(data.decode("utf-8"))
-            elif name == "images":
-                tmpdir = tempfile.mkdtemp(prefix="ocr_")
-                img_path = os.path.join(tmpdir, filename or "image.jpg")
-                with open(img_path, "wb") as f:
-                    f.write(data)
-                image_paths.append(img_path)
+            boundary_raw = content_type.split("boundary=")[1]
+            boundary = boundary_raw.split(";")[0].strip().encode()
+            body = self.rfile.read(int(self.headers["Content-Length"]))
+            parts = parse_multipart(body, boundary)
 
-        if not image_paths:
-            self.send_error(400, "no images provided")
-            return
+            request_data = None
+            image_paths = []
+            for name, filename, data in parts:
+                if name == "request":
+                    request_data = json.loads(data.decode("utf-8"))
+                elif name == "images":
+                    tmpdir = tempfile.mkdtemp(prefix="ocr_")
+                    img_path = os.path.join(tmpdir, filename or "image.jpg")
+                    with open(img_path, "wb") as f:
+                        f.write(data)
+                    image_paths.append(img_path)
 
-        try:
-            if OCRHandler.backend is None:
-                OCRHandler.backend = BedrockBackend()
-            result = OCRHandler.backend.extract(image_paths, request_data or {})
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(result).encode())
-        except Exception as e:
-            self.send_response(500)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            sid = request_data.get("session_id", 0) if request_data else 0
-            self.wfile.write(
-                json.dumps(
-                    {"session_id": sid, "status": "error", "error": str(e)}
-                ).encode()
-            )
+            session_id = request_data.get("session_id", 0) if request_data else 0
+            span.set_attribute("ocr.session_id", session_id)
+            span.set_attribute("ocr.image_count", len(image_paths))
+
+            if not image_paths:
+                span.set_attribute("http.response.status_code", 400)
+                self.send_error(400, "no images provided")
+                return
+
+            try:
+                if OCRHandler.backend is None:
+                    OCRHandler.backend = BedrockBackend()
+                result = OCRHandler.backend.extract(image_paths, request_data or {})
+                span.set_attribute("http.response.status_code", 200)
+                span.set_attribute("ocr.entries_extracted", len(result.get("entries", [])))
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(result).encode())
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                span.set_attribute("http.response.status_code", 500)
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps(
+                        {"session_id": session_id, "status": "error", "error": str(e)}
+                    ).encode()
+                )
 
 
 if __name__ == "__main__":
+    shutdown_tracing = setup_tracing()
     listen = os.environ.get("OCR_LISTEN", ":8000")
     host, port = listen.rsplit(":", 1) if ":" in listen else ("", listen)
     port = int(port)
 
     print(f"OCR service listening on {host}:{port} (backend: bedrock)")
-    HTTPServer((host, port), OCRHandler).serve_forever()
+    try:
+        HTTPServer((host, port), OCRHandler).serve_forever()
+    finally:
+        shutdown_tracing()

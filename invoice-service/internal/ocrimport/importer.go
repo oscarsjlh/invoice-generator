@@ -14,6 +14,11 @@ import (
 
 	"invoice-app/internal/db"
 	"invoice-app/internal/ocr"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -176,17 +181,25 @@ func (i *Importer) saveAndPreprocess(header *multipart.FileHeader) (savedPath st
 }
 
 func (i *Importer) ProcessSession(ctx context.Context, sessionID int64) error {
+	ctx, span := otel.Tracer("invoice-app/ocrimport").Start(ctx, "ocr.process_session")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("ocr.session_id", sessionID))
+
 	if err := ctx.Err(); err != nil {
+		recordSpanError(span, err)
 		return err
 	}
 	if err := i.Store.UpdateOCRSessionState(sessionID, "processing", ""); err != nil {
+		recordSpanError(span, err)
 		return err
 	}
 
 	images, err := i.Store.GetSessionImages(sessionID)
 	if err != nil {
+		recordSpanError(span, err)
 		return i.fail(sessionID, "get images", err)
 	}
+	span.SetAttributes(attribute.Int("ocr.image_count", len(images)))
 	imagePaths := make([]string, 0, len(images))
 	for _, img := range images {
 		imagePaths = append(imagePaths, img.FilePath)
@@ -194,27 +207,36 @@ func (i *Importer) ProcessSession(ctx context.Context, sessionID int64) error {
 
 	categories, err := i.Store.ListCategories()
 	if err != nil {
+		recordSpanError(span, err)
 		return i.fail(sessionID, "list categories", err)
 	}
 	rates, err := i.Store.ListRates()
 	if err != nil {
+		recordSpanError(span, err)
 		return i.fail(sessionID, "list rates", err)
 	}
 
-	result, err := i.extract(imagePaths, categories, rates, sessionID)
+	result, err := i.extract(ctx, imagePaths, categories, rates, sessionID)
 	if err != nil {
+		recordSpanError(span, err)
 		return i.fail(sessionID, "OCR processing failed", err)
 	}
 
 	drafts := buildDraftEntries(result, categories)
+	span.SetAttributes(attribute.Int("ocr.draft_count", len(drafts)))
 	if err := i.Store.SaveDraftEntries(sessionID, drafts); err != nil {
+		recordSpanError(span, err)
 		return i.fail(sessionID, "save drafts", err)
 	}
 
-	return i.Store.UpdateOCRSessionState(sessionID, "review_ready", "")
+	if err := i.Store.UpdateOCRSessionState(sessionID, "review_ready", ""); err != nil {
+		recordSpanError(span, err)
+		return err
+	}
+	return nil
 }
 
-func (i *Importer) extract(imagePaths []string, categories []string, rates []db.Rate, sessionID int64) (*ocr.OCRResponse, error) {
+func (i *Importer) extract(ctx context.Context, imagePaths []string, categories []string, rates []db.Rate, sessionID int64) (*ocr.OCRResponse, error) {
 	rateHints := make([]ocr.RateHint, 0, len(rates))
 	for _, r := range rates {
 		rateHints = append(rateHints, ocr.RateHint{
@@ -229,10 +251,20 @@ func (i *Importer) extract(imagePaths []string, categories []string, rates []db.
 	if extractor == nil {
 		extractor = ocr.NewStubClient()
 	}
-	return extractor.Extract(imagePaths, ocr.ContextHint{
+	return extractor.Extract(ctx, imagePaths, ocr.ContextHint{
 		Categories: categories,
 		SendRates:  true,
 	}, rateHints, sessionID)
+}
+
+type spanErrorRecorder interface {
+	RecordError(error, ...trace.EventOption)
+	SetStatus(codes.Code, string)
+}
+
+func recordSpanError(span spanErrorRecorder, err error) {
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
 }
 
 func buildDraftEntries(result *ocr.OCRResponse, categories []string) []db.OCRDraftEntry {

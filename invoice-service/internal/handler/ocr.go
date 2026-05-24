@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"invoice-app/internal/db"
 	"invoice-app/internal/ocrimport"
@@ -71,7 +72,7 @@ func (a *App) ocrStartSession(w http.ResponseWriter, r *http.Request) {
 	if a.cfg.OCRServiceURL != "" {
 		user := UserFromContext(r.Context())
 		if user != nil {
-			a.ocrJobs.Start(sessionID, user.ID)
+			a.ocrJobs.Start(r.Context(), sessionID, user.ID)
 		}
 	}
 	a.redirect(w, r, "/ocr/import/"+strconv.FormatInt(sessionID, 10), "Import session created")
@@ -114,6 +115,7 @@ func (a *App) ocrSessionStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+	categories = mergeDraftCategories(categories, drafts)
 
 	data := db.DraftReviewData{
 		Session:    session,
@@ -205,7 +207,7 @@ func (a *App) ocrConfirmDrafts(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		LoggerFromContext(r.Context()).Warn("confirm ocr drafts", "session_id", sessionID, "error", err)
-		http.Error(w, "Bad request", http.StatusBadRequest)
+		a.redirect(w, r, fmt.Sprintf("/ocr/import/%d", sessionID), err.Error())
 		return
 	}
 
@@ -214,6 +216,30 @@ func (a *App) ocrConfirmDrafts(w http.ResponseWriter, r *http.Request) {
 		notice += fmt.Sprintf(", %d skipped (missing data)", len(result.Skipped))
 	}
 	a.redirect(w, r, "/entries", notice)
+}
+
+func mergeDraftCategories(categories []string, drafts []db.OCRDraftEntry) []string {
+	seen := make(map[string]bool, len(categories)+len(drafts))
+	merged := make([]string, 0, len(categories)+len(drafts))
+	for _, category := range categories {
+		category = strings.TrimSpace(category)
+		if category == "" || seen[category] {
+			continue
+		}
+		seen[category] = true
+		merged = append(merged, category)
+	}
+	for _, draft := range drafts {
+		for _, category := range []string{draft.CategoryNormalized, draft.CategoryRaw} {
+			category = strings.TrimSpace(category)
+			if category == "" || seen[category] {
+				continue
+			}
+			seen[category] = true
+			merged = append(merged, category)
+		}
+	}
+	return merged
 }
 
 func (a *App) ocrDeleteSession(w http.ResponseWriter, r *http.Request) {

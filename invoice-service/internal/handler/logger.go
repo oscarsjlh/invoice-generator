@@ -11,6 +11,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 type contextKey string
@@ -48,6 +50,12 @@ func LoggerMiddleware(baseLogger *slog.Logger) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			requestID := generateRequestID()
 			logger := baseLogger.With("request_id", requestID)
+			if spanContext := trace.SpanContextFromContext(r.Context()); spanContext.IsValid() {
+				logger = logger.With(
+					"trace_id", spanContext.TraceID().String(),
+					"span_id", spanContext.SpanID().String(),
+				)
+			}
 			ctx := context.WithValue(r.Context(), loggerKey, logger)
 			w.Header().Set("X-Request-ID", requestID)
 			next.ServeHTTP(w, r.WithContext(ctx))

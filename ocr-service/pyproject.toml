@@ -2,4 +2,10 @@
 name = "ocr-service"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["boto3>=1.35", "Pillow>=10.0"]
+dependencies = [
+    "boto3>=1.35",
+    "Pillow>=10.0",
+    "opentelemetry-api>=1.38",
+    "opentelemetry-sdk>=1.38",
+    "opentelemetry-exporter-otlp-proto-http>=1.38",
+]

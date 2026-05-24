@@ -86,7 +86,7 @@ func OpenAuthDB(path string) (*AuthDB, error) {
 	for _, pragma := range pragmas {
 		if _, err := db.Exec(pragma); err != nil {
 			_ = db.Close()
-			return nil, fmt.Errorf("apply pragma %q: %w", pragma, err)
+			return nil, fmt.Errorf("apply pragma %q for auth database %s: %w", pragma, path, err)
 		}
 	}
 	return &AuthDB{db: db}, nil

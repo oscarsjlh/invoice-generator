@@ -80,6 +80,39 @@ func TestOCRSessionStatusHandler(t *testing.T) {
 	assert.Contains(t, string(body), "OCR")
 }
 
+func TestOCRSessionStatusIncludesDraftCategories(t *testing.T) {
+	t.Parallel()
+	ta := newTestAppWithAuth(t)
+	ta.app.cfg.OCREnabled = true
+
+	store := ta.store
+	sessionID, err := store.CreateOCRSession()
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateOCRSessionState(sessionID, "review_ready", ""))
+	require.NoError(t, store.SaveDraftEntries(sessionID, []db.OCRDraftEntry{
+		{
+			DateNormalized:     "2026-05-24",
+			CategoryRaw:        "Consultng",
+			CategoryNormalized: "Consulting",
+			HoursRaw:           "2",
+			HoursNormalized:    2,
+			Confidence:         0.8,
+		},
+	}))
+
+	idStr := strconv.FormatInt(sessionID, 10)
+	req := httptest.NewRequest("GET", "/ocr/import/"+idStr, nil)
+	req.SetPathValue("id", idStr)
+	req = req.WithContext(WithTestStore(req.Context(), ta.store))
+	w := httptest.NewRecorder()
+
+	ta.app.ocrSessionStatus(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Result().StatusCode)
+	body, _ := io.ReadAll(w.Result().Body)
+	assert.Contains(t, string(body), `<option value="Consulting" selected>Consulting</option>`)
+}
+
 func TestOCRDeleteSessionHandler(t *testing.T) {
 	t.Parallel()
 	ta := newTestAppWithAuth(t)

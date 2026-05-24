@@ -13,6 +13,11 @@ import (
 	"invoice-app/internal/email"
 	"invoice-app/internal/pdf"
 	"invoice-app/templates"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -69,31 +74,46 @@ func New(store Store, cfg config.Config) *Delivery {
 }
 
 func (d *Delivery) RenderPDF(ctx context.Context, invoiceID int64) (PDFResult, error) {
+	ctx, span := otel.Tracer("invoice-app/invoicedelivery").Start(ctx, "invoice_delivery.render_pdf")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("invoice.id", invoiceID))
+
 	invoice, err := d.Store.GetInvoice(invoiceID)
 	if err != nil {
+		recordSpanError(span, err)
 		return PDFResult{}, err
 	}
 	settings, err := d.Store.LoadSettings()
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		recordSpanError(span, err)
 		return PDFResult{}, fmt.Errorf("load settings: %w", err)
 	}
 	data, err := d.Renderer.RenderInvoice(ctx, invoice, settings)
 	if err != nil {
+		recordSpanError(span, err)
 		return PDFResult{}, err
 	}
+	span.SetAttributes(attribute.Int("pdf.bytes", len(data)))
 	return PDFResult{Data: data, FileName: invoice.InvoiceNumber + ".pdf"}, nil
 }
 
 func (d *Delivery) Send(ctx context.Context, invoiceID int64) (SendResult, error) {
+	ctx, span := otel.Tracer("invoice-app/invoicedelivery").Start(ctx, "invoice_delivery.send")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("invoice.id", invoiceID))
+
 	invoice, err := d.Store.GetInvoice(invoiceID)
 	if err != nil {
+		recordSpanError(span, err)
 		return SendResult{}, err
 	}
 	settings, err := d.Store.LoadSettings()
 	if err != nil {
+		recordSpanError(span, err)
 		return SendResult{}, fmt.Errorf("load settings: %w", err)
 	}
 	if settings.CustomerEmail == "" {
+		recordSpanError(span, ErrCustomerEmailMissing)
 		return SendResult{}, ErrCustomerEmailMissing
 	}
 
@@ -105,13 +125,16 @@ func (d *Delivery) Send(ctx context.Context, invoiceID int64) (SendResult, error
 		SMTPFrom: d.Config.SMTPFrom,
 	}
 	if cfg.SMTPHost == "" || cfg.SMTPFrom == "" {
+		recordSpanError(span, ErrSMTPNotConfigured)
 		return SendResult{}, ErrSMTPNotConfigured
 	}
 
 	pdfData, err := d.Renderer.RenderInvoice(ctx, invoice, settings)
 	if err != nil {
+		recordSpanError(span, err)
 		return SendResult{}, fmt.Errorf("%w: %w", ErrRenderPDF, err)
 	}
+	span.SetAttributes(attribute.Int("pdf.bytes", len(pdfData)))
 
 	customerName := settings.CustomerName
 	if customerName == "" {
@@ -126,6 +149,7 @@ func (d *Delivery) Send(ctx context.Context, invoiceID int64) (SendResult, error
 		PDFData:       pdfData,
 		Config:        cfg,
 	}); err != nil {
+		recordSpanError(span, err)
 		return SendResult{}, err
 	}
 	return SendResult{Recipient: settings.CustomerEmail}, nil
@@ -143,12 +167,21 @@ func (EmailMailer) SendInvoice(ctx context.Context, input SendEmailInput) error 
 type TypstRenderer struct{}
 
 func (TypstRenderer) RenderInvoice(ctx context.Context, invoice db.Invoice, settings db.Settings) ([]byte, error) {
+	ctx, span := otel.Tracer("invoice-app/pdf").Start(ctx, "pdf.render_invoice")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Int64("invoice.id", invoice.ID),
+		attribute.Int("invoice.line_count", len(invoice.Lines)),
+	)
+
 	if err := ctx.Err(); err != nil {
+		recordSpanError(span, err)
 		return nil, err
 	}
 
 	tmpDir, err := os.MkdirTemp("", "typst-invoice-*")
 	if err != nil {
+		recordSpanError(span, err)
 		return nil, fmt.Errorf("create temp dir: %w", err)
 	}
 	defer func() {
@@ -157,11 +190,23 @@ func (TypstRenderer) RenderInvoice(ctx context.Context, invoice db.Invoice, sett
 
 	templateBytes, err := templates.FS.ReadFile("invoice-maker.typ")
 	if err != nil {
+		recordSpanError(span, err)
 		return nil, fmt.Errorf("read typst template: %w", err)
 	}
 
 	typContent := pdf.FormatInvoiceTyp(BuildPDFData(invoice, settings))
-	return pdf.GenerateInvoicePDF(tmpDir, templateBytes, typContent)
+	data, err := pdf.GenerateInvoicePDF(tmpDir, templateBytes, typContent)
+	if err != nil {
+		recordSpanError(span, err)
+		return nil, err
+	}
+	span.SetAttributes(attribute.Int("pdf.bytes", len(data)))
+	return data, nil
+}
+
+func recordSpanError(span trace.Span, err error) {
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
 }
 
 func BuildPDFData(invoice db.Invoice, settings db.Settings) pdf.InvoiceData {

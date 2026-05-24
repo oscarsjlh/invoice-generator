@@ -7,6 +7,9 @@ import (
 	"invoice-app/internal/config"
 	"invoice-app/internal/ocr"
 	"invoice-app/internal/ocrimport"
+
+	"go.opentelemetry.io/otel/baggage"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type OCRJobRunner struct {
@@ -24,16 +27,16 @@ func (r *OCRJobRunner) SetExtractor(extractor ocr.Extractor) {
 	r.extractor = extractor
 }
 
-func (r *OCRJobRunner) Start(sessionID int64, userID int64) {
+func (r *OCRJobRunner) Start(ctx context.Context, sessionID int64, userID int64) {
 	r.wg.Add(1)
-	go r.process(sessionID, userID)
+	go r.process(detachedTraceContext(ctx), sessionID, userID)
 }
 
 func (r *OCRJobRunner) Wait() {
 	r.wg.Wait()
 }
 
-func (r *OCRJobRunner) process(sessionID int64, userID int64) {
+func (r *OCRJobRunner) process(ctx context.Context, sessionID int64, userID int64) {
 	defer r.wg.Done()
 
 	store, err := r.stores.ForUser(userID)
@@ -41,7 +44,7 @@ func (r *OCRJobRunner) process(sessionID int64, userID int64) {
 		return
 	}
 
-	_ = r.importer(store).ProcessSession(context.Background(), sessionID)
+	_ = r.importer(newTracedStore(ctx, store)).ProcessSession(ctx, sessionID)
 }
 
 func (r *OCRJobRunner) importer(store ocrimport.Store) *ocrimport.Importer {
@@ -54,4 +57,15 @@ func (r *OCRJobRunner) importer(store ocrimport.Store) *ocrimport.Importer {
 		Extractor: extractor,
 		UploadDir: r.cfg.OCRUploadDir,
 	}
+}
+
+func detachedTraceContext(ctx context.Context) context.Context {
+	detached := context.Background()
+	if spanContext := trace.SpanContextFromContext(ctx); spanContext.IsValid() {
+		detached = trace.ContextWithSpanContext(detached, spanContext)
+	}
+	if bag := baggage.FromContext(ctx); bag.Len() > 0 {
+		detached = baggage.ContextWithBaggage(detached, bag)
+	}
+	return detached
 }

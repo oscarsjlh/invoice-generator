@@ -12,12 +12,25 @@ import (
 	"invoice-app/internal/config"
 	"invoice-app/internal/db"
 	"invoice-app/internal/handler"
+	"invoice-app/internal/tracing"
 )
 
 func main() {
 	cfg := config.Load()
 
 	logger := handler.NewLogger(cfg.LogLevel, cfg.LogFormat, cfg.LogIncludeSource)
+	shutdownTracing, err := tracing.Init(context.Background(), "invoice-service")
+	if err != nil {
+		logger.Error("initialize tracing", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTracing(ctx); err != nil {
+			logger.Error("shutdown tracing", "error", err)
+		}
+	}()
 
 	var authDB *db.AuthDB
 	var webAuthn *auth.WebAuthnManager

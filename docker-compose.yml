@@ -22,6 +22,9 @@ services:
       WEB_AUTHN_RP_DISPLAY: "Invoice App"
       LOG_LEVEL: "debug"
       LOG_FORMAT: "json"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318"
+      OTEL_TRACES_SAMPLER: "parentbased_traceidratio"
+      OTEL_TRACES_SAMPLER_ARG: "1.0"
     restart: unless-stopped
 
   ocr-service:
@@ -31,4 +34,18 @@ services:
       context: ./ocr-service
     ports:
       - "8000:8000"
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318"
+      OTEL_TRACES_SAMPLER: "parentbased_traceidratio"
+      OTEL_TRACES_SAMPLER_ARG: "1.0"
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
     restart: unless-stopped
