@@ -1,0 +1,88 @@
+services:
+  app-auth-on:
+    build:
+      context: ./invoice-service
+      args:
+        GO_BUILD_TAGS: e2e
+    ports:
+      - "18080:8080"
+    environment:
+      ADDRESS: ":8080"
+      AUTH_ENABLED: "true"
+      E2E_TEST_HELPERS: "true"
+      DATABASE_PATH: "/tmp/invoice-e2e/auth-on/legacy.db"
+      AUTH_DB_PATH: "/tmp/invoice-e2e/auth-on/auth.db"
+      USER_DB_DIR: "/tmp/invoice-e2e/auth-on/users"
+      OCR_ENABLED: "false"
+      OCR_UPLOAD_DIR: "/tmp/invoice-e2e/auth-on/ocr-uploads"
+      MIGRATIONS_DIR: "/app/migrations"
+      AUTH_MIGRATIONS_DIR: "/app/auth-migrations"
+      WEB_AUTHN_RP_ID: "localhost"
+      WEB_AUTHN_RP_ORIGINS: "http://localhost:18080"
+      LOG_LEVEL: "info"
+      LOG_FORMAT: "json"
+      OTEL_SDK_DISABLED: "true"
+
+  app-noauth-1:
+    build:
+      context: ./invoice-service
+      args:
+        GO_BUILD_TAGS: e2e
+    ports:
+      - "18081:8080"
+    environment:
+      ADDRESS: ":8080"
+      AUTH_ENABLED: "false"
+      E2E_TEST_HELPERS: "true"
+      DATABASE_PATH: "/tmp/invoice-e2e/noauth-1/invoices.db"
+      AUTH_DB_PATH: "/tmp/invoice-e2e/noauth-1/auth.db"
+      USER_DB_DIR: "/tmp/invoice-e2e/noauth-1/users"
+      OCR_ENABLED: "false"
+      OCR_UPLOAD_DIR: "/tmp/invoice-e2e/noauth-1/ocr-uploads"
+      MIGRATIONS_DIR: "/app/migrations"
+      AUTH_MIGRATIONS_DIR: "/app/auth-migrations"
+      LOG_LEVEL: "info"
+      LOG_FORMAT: "json"
+      OTEL_SDK_DISABLED: "true"
+
+  app-noauth-2:
+    build:
+      context: ./invoice-service
+      args:
+        GO_BUILD_TAGS: e2e
+    ports:
+      - "18082:8080"
+    environment:
+      ADDRESS: ":8080"
+      AUTH_ENABLED: "false"
+      E2E_TEST_HELPERS: "true"
+      DATABASE_PATH: "/tmp/invoice-e2e/noauth-2/invoices.db"
+      AUTH_DB_PATH: "/tmp/invoice-e2e/noauth-2/auth.db"
+      USER_DB_DIR: "/tmp/invoice-e2e/noauth-2/users"
+      OCR_ENABLED: "false"
+      OCR_UPLOAD_DIR: "/tmp/invoice-e2e/noauth-2/ocr-uploads"
+      MIGRATIONS_DIR: "/app/migrations"
+      AUTH_MIGRATIONS_DIR: "/app/auth-migrations"
+      LOG_LEVEL: "info"
+      LOG_FORMAT: "json"
+      OTEL_SDK_DISABLED: "true"
+
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.60.0-noble
+    working_dir: /work/invoice-service
+    depends_on:
+      - app-auth-on
+      - app-noauth-1
+      - app-noauth-2
+    environment:
+      CI: "true"
+      PLAYWRIGHT_AUTH_BASE_URL: "http://app-auth-on:8080"
+      PLAYWRIGHT_NOAUTH_BASE_URLS: "http://app-noauth-1:8080,http://app-noauth-2:8080"
+      PLAYWRIGHT_SKIP_WEBSERVER: "1"
+      PLAYWRIGHT_WORKERS: "2"
+    volumes:
+      - .:/work
+    command: >
+      sh -c "npx pnpm install --frozen-lockfile &&
+      node tests/e2e/support/wait-for-services.js &&
+      npx playwright test"

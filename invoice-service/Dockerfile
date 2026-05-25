@@ -12,7 +12,8 @@ RUN go mod download
 COPY . .
 COPY --from=deps /deps/node_modules ./node_modules
 RUN cp node_modules/htmx.org/dist/htmx.min.js static/
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/invoice-app ./cmd/server
+ARG GO_BUILD_TAGS=""
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ${GO_BUILD_TAGS:+-tags=${GO_BUILD_TAGS}} -o /out/invoice-app ./cmd/server
 
 FROM alpine:3.23 AS runtime
 

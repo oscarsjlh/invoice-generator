@@ -168,6 +168,7 @@ func (a *App) Routes() http.Handler {
 		mux.HandleFunc("POST /logout", a.logout)
 	}
 	mux.HandleFunc("GET /health", a.health)
+	a.registerE2EHelperRoutes(mux)
 	mux.HandleFunc("GET /static/", func(w http.ResponseWriter, r *http.Request) {
 		http.StripPrefix("/static/", http.FileServerFS(static.FS)).ServeHTTP(w, r)
 	})
@@ -210,7 +211,7 @@ func isPublicPath(path string) bool {
 			return true
 		}
 	}
-	return false
+	return isE2EPublicPath(path)
 }
 
 func (a *App) authMiddleware(next http.Handler) http.Handler {
