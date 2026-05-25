@@ -51,6 +51,8 @@ invoice-app
 *.db
 *.out
 coverage.html
+invoice-service/test-results/
+invoice-service/playwright-report/
 
 
 # Byte-compiled / optimized / DLL files

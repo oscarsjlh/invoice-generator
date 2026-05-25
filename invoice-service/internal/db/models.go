@@ -43,22 +43,28 @@ type InvoiceLine struct {
 }
 
 type Invoice struct {
-	ID              int64
-	InvoiceNumber   string
-	Month           string
-	Category        string
-	InvoiceDate     string
-	DueDate         string
-	Subtotal        float64
-	Total           float64
-	BusinessName    string
-	BusinessAddress string
-	BankName        string
-	AccountName     string
-	AccountNumber   string
-	SortCode        string
-	PaymentTerms    string
-	Lines           []InvoiceLine
+	ID                 int64
+	InvoiceNumber      string
+	Month              string
+	Category           string
+	InvoiceDate        string
+	DueDate            string
+	Subtotal           float64
+	Total              float64
+	BusinessName       string
+	BusinessAddress    string
+	BankName           string
+	AccountName        string
+	AccountNumber      string
+	SortCode           string
+	PaymentTerms       string
+	CustomerName       string
+	CustomerTitle      string
+	CustomerEmail      string
+	CustomerAddress    string
+	CustomerPostalCode string
+	CustomerCity       string
+	Lines              []InvoiceLine
 }
 
 type OCRSession struct {

@@ -245,8 +245,14 @@ func (s *Store) GenerateInvoice(month, category, invoiceDate string, dueDays int
 			account_name,
 			account_number,
 			sort_code,
-			payment_terms
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			payment_terms,
+			customer_name,
+			customer_title,
+			customer_email,
+			customer_address,
+			customer_postal_code,
+			customer_city
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		invoiceNumber,
 		month,
@@ -262,6 +268,12 @@ func (s *Store) GenerateInvoice(month, category, invoiceDate string, dueDays int
 		settings.AccountNumber,
 		settings.SortCode,
 		settings.PaymentTerms,
+		settings.CustomerName,
+		settings.CustomerTitle,
+		settings.CustomerEmail,
+		settings.CustomerAddress,
+		settings.CustomerPostalCode,
+		settings.CustomerCity,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("insert invoice: %w", err)
@@ -370,7 +382,13 @@ func (s *Store) GetInvoice(id int64) (Invoice, error) {
 			account_name,
 			account_number,
 			sort_code,
-			payment_terms
+			payment_terms,
+			customer_name,
+			customer_title,
+			customer_email,
+			customer_address,
+			customer_postal_code,
+			customer_city
 		FROM invoices
 		WHERE id = ?
 	`, id)
@@ -391,6 +409,12 @@ func (s *Store) GetInvoice(id int64) (Invoice, error) {
 		&invoice.AccountNumber,
 		&invoice.SortCode,
 		&invoice.PaymentTerms,
+		&invoice.CustomerName,
+		&invoice.CustomerTitle,
+		&invoice.CustomerEmail,
+		&invoice.CustomerAddress,
+		&invoice.CustomerPostalCode,
+		&invoice.CustomerCity,
 	); err != nil {
 		if err == sql.ErrNoRows {
 			return Invoice{}, err

@@ -60,6 +60,37 @@
   </figure>
 
   <section style="margin-top:2rem;">
+    <h3>Client Details</h3>
+    <div class="bank-details">
+      <div>
+        <small class="muted">Client</small>
+        <div>{{.CustomerName}}</div>
+      </div>
+      {{if .CustomerTitle}}
+      <div>
+        <small class="muted">Title</small>
+        <div>{{.CustomerTitle}}</div>
+      </div>
+      {{end}}
+      <div>
+        <small class="muted">Email</small>
+        <div>{{.CustomerEmail}}</div>
+      </div>
+      <div>
+        <small class="muted">City</small>
+        <div>{{.CustomerCity}}</div>
+      </div>
+      <div>
+        <small class="muted">Postal Code</small>
+        <div>{{.CustomerPostalCode}}</div>
+      </div>
+    </div>
+    {{if .CustomerAddress}}
+    <p class="preline muted" style="margin-top:1rem;">{{.CustomerAddress}}</p>
+    {{end}}
+  </section>
+
+  <section style="margin-top:2rem;">
     <h3>Payment Details</h3>
     <div class="bank-details">
       <div>
