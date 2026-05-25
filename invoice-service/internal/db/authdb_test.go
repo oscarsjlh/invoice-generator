@@ -88,6 +88,29 @@ func TestAuthDBGetUserByID(t *testing.T) {
 	if user.DisplayName != "Bob Builder" {
 		t.Errorf("DisplayName = %q, want Bob Builder", user.DisplayName)
 	}
+	if user.WebAuthnUserID == "" {
+		t.Error("WebAuthnUserID should be set")
+	}
+	if user.WebAuthnUserID == "bob" {
+		t.Error("WebAuthnUserID should not be derived from username")
+	}
+}
+
+func TestAuthDBCreateUserWithWebAuthnID(t *testing.T) {
+	t.Parallel()
+	adb := setupTestAuthDB(t)
+
+	id, err := adb.CreateUserWithWebAuthnID("opaque", "Opaque", "opaque-user-id")
+	if err != nil {
+		t.Fatalf("CreateUserWithWebAuthnID: %v", err)
+	}
+	user, err := adb.GetUserByID(id)
+	if err != nil {
+		t.Fatalf("GetUserByID: %v", err)
+	}
+	if user.WebAuthnUserID != "opaque-user-id" {
+		t.Errorf("WebAuthnUserID = %q, want opaque-user-id", user.WebAuthnUserID)
+	}
 }
 
 func TestAuthDBGetUserByIDNotFound(t *testing.T) {

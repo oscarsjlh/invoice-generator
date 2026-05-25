@@ -12,17 +12,19 @@ import (
 )
 
 type Renderer struct {
-	baseTmpl *template.Template
-	logger   *slog.Logger
-	authOn   func() bool
-	ocrOn    func() bool
+	baseTmpl       *template.Template
+	logger         *slog.Logger
+	authOn         func() bool
+	registrationOn func() bool
+	ocrOn          func() bool
 }
 
-func NewRenderer(logger *slog.Logger, authOn func() bool, ocrOn func() bool) *Renderer {
+func NewRenderer(logger *slog.Logger, authOn func() bool, registrationOn func() bool, ocrOn func() bool) *Renderer {
 	r := &Renderer{
-		logger: logger,
-		authOn: authOn,
-		ocrOn:  ocrOn,
+		logger:         logger,
+		authOn:         authOn,
+		registrationOn: registrationOn,
+		ocrOn:          ocrOn,
 	}
 	r.baseTmpl = r.compileTemplates()
 	return r
@@ -30,16 +32,19 @@ func NewRenderer(logger *slog.Logger, authOn func() bool, ocrOn func() bool) *Re
 
 func (r *Renderer) compileTemplates() *template.Template {
 	funcMap := template.FuncMap{
-		"money":       money,
-		"numfmt":      numfmt,
-		"dateLabel":   dateLabel,
-		"selected":    selected,
-		"monthName":   monthName,
-		"mul":         func(a float64, b float64) float64 { return a * b },
-		"divf":        func(a float64, b float64) float64 { return a / b },
-		"div":         func(a, b int64) int64 { return a / b },
-		"authEnabled": r.authOn,
-		"ocrEnabled":  r.ocrOn,
+		"money":               money,
+		"numfmt":              numfmt,
+		"dateLabel":           dateLabel,
+		"selected":            selected,
+		"monthName":           monthName,
+		"mul":                 func(a float64, b float64) float64 { return a * b },
+		"divf":                func(a float64, b float64) float64 { return a / b },
+		"div":                 func(a, b int64) int64 { return a / b },
+		"authEnabled":         r.authOn,
+		"registrationEnabled": r.registrationOn,
+		"ocrEnabled":          r.ocrOn,
+		"isLoginPage":         isLoginPage,
+		"isRegisterPage":      isRegisterPage,
 	}
 
 	tmpl, err := template.New("").Funcs(funcMap).ParseFS(templates.FS, "layout.html")
@@ -48,6 +53,16 @@ func (r *Renderer) compileTemplates() *template.Template {
 		panic(fmt.Sprintf("failed to compile base template: %v", err))
 	}
 	return tmpl
+}
+
+func isLoginPage(data any) bool {
+	_, ok := data.(*LoginPageData)
+	return ok
+}
+
+func isRegisterPage(data any) bool {
+	_, ok := data.(*RegisterPageData)
+	return ok
 }
 
 func (r *Renderer) Page(w http.ResponseWriter, req *http.Request, status int, page string, data any, extra ...string) {

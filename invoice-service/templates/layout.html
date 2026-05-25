@@ -23,6 +23,7 @@
       <ul>
         <li><strong>Invoice App</strong></li>
       </ul>
+      {{if or .User (not authEnabled)}}
       <ul>
         <li><a href="/">Dashboard</a></li>
         <li><a href="/entries">Entries</a></li>
@@ -31,6 +32,7 @@
         {{if ocrEnabled}}<li><a href="/ocr/import">Import</a></li>{{end}}
         <li><a href="/settings">Settings</a></li>
       </ul>
+      {{end}}
       <ul>
         <li>
           <button type="button" class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
@@ -47,7 +49,14 @@
           </form>
         </li>
       {{else}}
+        {{if and authEnabled (isRegisterPage .)}}
         <li><a href="/login">Login</a></li>
+        {{else if and authEnabled (isLoginPage .) registrationEnabled}}
+        <li><a href="/register">Create account</a></li>
+        {{else if and authEnabled (isLoginPage .)}}
+        {{else}}
+        <li><a href="/login">Login</a></li>
+        {{end}}
       {{end}}
       </ul>
     </nav>

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -21,11 +22,12 @@ type AuthDB struct {
 }
 
 type User struct {
-	ID          int64
-	Username    string
-	DisplayName string
-	CreatedAt   string
-	creds       []webauthn.Credential
+	ID             int64
+	Username       string
+	DisplayName    string
+	WebAuthnUserID string
+	CreatedAt      string
+	creds          []webauthn.Credential
 }
 
 func (u *User) Credentials() []webauthn.Credential {
@@ -36,6 +38,9 @@ func (u *User) Credentials() []webauthn.Credential {
 }
 
 func (u *User) WebAuthnID() []byte {
+	if u.WebAuthnUserID != "" {
+		return []byte(u.WebAuthnUserID)
+	}
 	return []byte(fmt.Sprintf("%d", u.ID))
 }
 
@@ -140,17 +145,40 @@ func (a *AuthDB) Migrate(dir string) error {
 }
 
 func (a *AuthDB) CreateUser(username, displayName string) (int64, error) {
-	result, err := a.db.Exec(`INSERT INTO users (username, display_name) VALUES (?, ?)`, username, displayName)
+	webAuthnUserID, err := generateWebAuthnUserID()
+	if err != nil {
+		return 0, err
+	}
+	result, err := a.db.Exec(`INSERT INTO users (username, display_name, webauthn_user_id) VALUES (?, ?, ?)`, username, displayName, webAuthnUserID)
 	if err != nil {
 		return 0, fmt.Errorf("create user: %w", err)
 	}
 	return result.LastInsertId()
 }
 
+func (a *AuthDB) CreateUserWithWebAuthnID(username, displayName, webAuthnUserID string) (int64, error) {
+	if webAuthnUserID == "" {
+		return 0, fmt.Errorf("webauthn user id is required")
+	}
+	result, err := a.db.Exec(`INSERT INTO users (username, display_name, webauthn_user_id) VALUES (?, ?, ?)`, username, displayName, webAuthnUserID)
+	if err != nil {
+		return 0, fmt.Errorf("create user: %w", err)
+	}
+	return result.LastInsertId()
+}
+
+func generateWebAuthnUserID() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate webauthn user id: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
 func (a *AuthDB) GetUserByID(id int64) (*User, error) {
-	row := a.db.QueryRow(`SELECT id, username, display_name, created_at FROM users WHERE id = ?`, id)
+	row := a.db.QueryRow(`SELECT id, username, display_name, COALESCE(webauthn_user_id, CAST(id AS TEXT)), created_at FROM users WHERE id = ?`, id)
 	var u User
-	err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.CreatedAt)
+	err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.WebAuthnUserID, &u.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -167,14 +195,33 @@ func (a *AuthDB) GetUserByID(id int64) (*User, error) {
 }
 
 func (a *AuthDB) GetUserByUsernameForAuth(username string) (*User, error) {
-	row := a.db.QueryRow(`SELECT id, username, display_name, created_at FROM users WHERE username = ?`, username)
+	row := a.db.QueryRow(`SELECT id, username, display_name, COALESCE(webauthn_user_id, CAST(id AS TEXT)), created_at FROM users WHERE username = ?`, username)
 	var u User
-	err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.CreatedAt)
+	err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.WebAuthnUserID, &u.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get user by username: %w", err)
+	}
+
+	creds, err := a.GetCredentials(u.ID)
+	if err != nil {
+		return nil, err
+	}
+	u.creds = creds
+	return &u, nil
+}
+
+func (a *AuthDB) GetUserByUsernameFold(username string) (*User, error) {
+	row := a.db.QueryRow(`SELECT id, username, display_name, COALESCE(webauthn_user_id, CAST(id AS TEXT)), created_at FROM users WHERE lower(username) = lower(?) ORDER BY id LIMIT 1`, username)
+	var u User
+	err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.WebAuthnUserID, &u.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get user by username fold: %w", err)
 	}
 
 	creds, err := a.GetCredentials(u.ID)
@@ -259,7 +306,7 @@ func (a *AuthDB) ValidateSessionToken(token []byte) (*User, error) {
 
 	var user User
 	var expiresAtStr string
-	err := a.db.QueryRow(`SELECT u.id, u.username, u.display_name, u.created_at, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`, hash[:]).Scan(&user.ID, &user.Username, &user.DisplayName, &user.CreatedAt, &expiresAtStr)
+	err := a.db.QueryRow(`SELECT u.id, u.username, u.display_name, COALESCE(u.webauthn_user_id, CAST(u.id AS TEXT)), u.created_at, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`, hash[:]).Scan(&user.ID, &user.Username, &user.DisplayName, &user.WebAuthnUserID, &user.CreatedAt, &expiresAtStr)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

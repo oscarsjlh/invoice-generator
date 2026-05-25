@@ -5,8 +5,17 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
+
+	"invoice-app/internal/auth"
 
 	"github.com/go-webauthn/webauthn/protocol"
+)
+
+const (
+	noticeSignInRequired = "signin_required"
+	noticeSignedOut      = "signed_out"
 )
 
 func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
@@ -15,17 +24,23 @@ func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, "/", "")
 		return
 	}
-	data := LoginPageData{Notice: noticeFromRequest(r)}
+	notice, kind := authNoticeFromRequest(r)
+	data := LoginPageData{Notice: notice, NoticeKind: kind, Next: safeNextFromRequest(r)}
 	a.renderPage(w, r, http.StatusOK, "login.html", data)
 }
 
 func (a *App) registerPage(w http.ResponseWriter, r *http.Request) {
+	if !a.cfg.RegistrationEnabled {
+		http.NotFound(w, r)
+		return
+	}
 	user, _ := a.sessions.GetUserFromRequest(r)
 	if user != nil {
 		a.redirect(w, r, "/", "")
 		return
 	}
-	data := RegisterPageData{Notice: noticeFromRequest(r)}
+	notice, kind := authNoticeFromRequest(r)
+	data := RegisterPageData{Notice: notice, NoticeKind: kind}
 	a.renderPage(w, r, http.StatusOK, "register.html", data)
 }
 
@@ -35,10 +50,20 @@ type beginRegisterRequest struct {
 }
 
 func (a *App) beginRegistration(w http.ResponseWriter, r *http.Request) {
+	if !a.cfg.RegistrationEnabled {
+		http.NotFound(w, r)
+		return
+	}
 	logger := LoggerFromContext(r.Context())
 	var req beginRegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	req.Username = auth.NormalizeUsername(req.Username)
+	req.DisplayName = req.Username
+	if !auth.ValidateUsername(req.Username) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_username", "message": auth.UsernameValidationMessage})
 		return
 	}
 
@@ -57,6 +82,10 @@ func (a *App) beginRegistration(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) finishRegistration(w http.ResponseWriter, r *http.Request) {
+	if !a.cfg.RegistrationEnabled {
+		http.NotFound(w, r)
+		return
+	}
 	logger := LoggerFromContext(r.Context())
 	body, err := io.ReadAll(r.Body)
 	if closeErr := r.Body.Close(); closeErr != nil && err == nil {
@@ -106,8 +135,23 @@ func (a *App) beginLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
+	rawUsername := req.Username
+	normalizedUsername := auth.NormalizeUsername(rawUsername)
+	if !auth.ValidateUsername(normalizedUsername) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_username", "message": auth.UsernameValidationMessage})
+		return
+	}
 
-	sid, options, userID, err := a.webAuthn.BeginLogin(req.Username)
+	var sid string
+	var options any
+	var userID int64
+	var err error
+	for _, username := range auth.LoginUsernameCandidates(rawUsername) {
+		sid, options, userID, err = a.webAuthn.BeginLogin(username)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		logger.Warn("begin_login_failed", "event", "begin_login_failed", "component", "auth", "operation", "begin_login", "username_hash", RedactEmail(req.Username), "error", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "login failed"})
@@ -172,7 +216,7 @@ func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = a.sessions.DestroySession(w, r)
-	a.redirect(w, r, "/login", "Signed out")
+	a.redirect(w, r, "/login", noticeSignedOut)
 }
 
 func writeJSON(w http.ResponseWriter, status int, data any) {
@@ -182,3 +226,37 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 }
 
 var _ = protocol.CredentialCreation{}
+
+func authNoticeFromRequest(r *http.Request) (string, string) {
+	switch strings.TrimSpace(r.URL.Query().Get("notice")) {
+	case noticeSignInRequired:
+		return "Please sign in", "info"
+	case noticeSignedOut:
+		return "Signed out", "success"
+	default:
+		return "", ""
+	}
+}
+
+func loginRedirectPath(r *http.Request) string {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return "/login"
+	}
+	next := safeNextPath(r.URL.RequestURI())
+	if next == "" {
+		return "/login"
+	}
+	return "/login?next=" + url.QueryEscape(next)
+}
+
+func safeNextFromRequest(r *http.Request) string {
+	return safeNextPath(r.URL.Query().Get("next"))
+}
+
+func safeNextPath(next string) string {
+	next = strings.TrimSpace(next)
+	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") || strings.Contains(next, "\\") {
+		return ""
+	}
+	return next
+}

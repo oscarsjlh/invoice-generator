@@ -3,9 +3,9 @@
 
 - **Languages:** go (primary), bash, contract, css, dockerfile, gitattributes, gitignore, hcl, html, javascript, json, makefile, markdown, python, sql, toml, typst, yaml
 - **Entry points:** `invoice-service/cmd/server/main.go`, `invoice-service/cmd/migrate-to-user/main.go`, `invoice-service/cmd/migrate-csv/main.go`
-- **Most-referenced symbols:** `len` (69 usages), `LoggerFromContext` (57 usages), `Close` (57 usages), `WithTestStore` (42 usages), `newTestApp` (31 usages), `StoreFromContext` (27 usages), `CreateEntry` (24 usages), `setupTestDB` (22 usages), `getenv` (22 usages), `Settings` (20 usages)
-- **Graph size:** 4953 nodes, 23091 edges
-- **Breakdown:** 156 closures, 105 columns, 4 config_keys, 19 constants, 63 contracts, 755 docs, 358 fields, 224 files, 311 functions, 1 generic_params, 12 images, 406 imports, 17 interfaces, 218 methods, 11 modules, 724 params, 210 strings, 150 types, 1209 variables
+- **Most-referenced symbols:** `len` (69 usages), `LoggerFromContext` (57 usages), `Close` (49 usages), `WithTestStore` (42 usages), `newTestApp` (31 usages), `StoreFromContext` (27 usages), `CreateEntry` (24 usages), `getenv` (22 usages), `setupTestDB` (22 usages), `newTestAppWithAuth` (21 usages)
+- **Graph size:** 5059 nodes, 23807 edges
+- **Breakdown:** 156 closures, 111 columns, 5 config_keys, 20 constants, 68 contracts, 759 docs, 369 fields, 234 files, 337 functions, 1 generic_params, 12 images, 425 imports, 17 interfaces, 221 methods, 11 modules, 733 params, 211 strings, 152 types, 1217 variables
 
 ## MANDATORY: Use Gortex MCP tools instead of Read/Grep/Glob
 
@@ -35,26 +35,26 @@ These are not suggestions — run each step at the trigger.
 
 | Area | Description | Skill |
 |------|-------------|-------|
-| Db 2 Dirs | 156 symbols | `/gortex-db-2-dirs` |
-| Handler Loggerfromcontext | 155 symbols | `/gortex-handler-loggerfromcontext` |
-| Handler 1 Dirs Withteststore | 119 symbols | `/gortex-handler-1-dirs-withteststore` |
-| Invoicedelivery 2 Dirs | 81 symbols | `/gortex-invoicedelivery-2-dirs` |
-| Handler 2 Dirs Createuser | 70 symbols | `/gortex-handler-2-dirs-createuser` |
+| Db 4 Dirs | 185 symbols | `/gortex-db-4-dirs` |
+| Handler Loggerfromcontext | 151 symbols | `/gortex-handler-loggerfromcontext` |
+| Handler 1 Dirs Withteststore | 122 symbols | `/gortex-handler-1-dirs-withteststore` |
+| Auth 2 Dirs | 111 symbols | `/gortex-auth-2-dirs` |
+| Invoicedelivery 2 Dirs | 87 symbols | `/gortex-invoicedelivery-2-dirs` |
 | Handler 4 Dirs | 70 symbols | `/gortex-handler-4-dirs` |
 | Db 1 Dirs Tracedb | 56 symbols | `/gortex-db-1-dirs-tracedb` |
 | Config | 53 symbols | `/gortex-config` |
-| Db 3 Dirs | 50 symbols | `/gortex-db-3-dirs` |
-| Handler 2 Dirs Authmiddleware | 48 symbols | `/gortex-handler-2-dirs-authmiddleware` |
 | Ocr 1 Dirs | 46 symbols | `/gortex-ocr-1-dirs` |
 | Ocrimport Confirmdrafts | 45 symbols | `/gortex-ocrimport-confirmdrafts` |
-| Handler Writeheader | 43 symbols | `/gortex-handler-writeheader` |
 | Email | 41 symbols | `/gortex-email` |
 | Handler Tracedberr | 40 symbols | `/gortex-handler-tracedberr` |
-| Auth Newwebauthnmanager | 38 symbols | `/gortex-auth-newwebauthnmanager` |
 | Pdf | 38 symbols | `/gortex-pdf` |
-| Db Foruser | 34 symbols | `/gortex-db-foruser` |
+| Db Foruser | 36 symbols | `/gortex-db-foruser` |
+| Auth 1 Dirs Newsessionmanager | 35 symbols | `/gortex-auth-1-dirs-newsessionmanager` |
+| Handler Writeheader | 35 symbols | `/gortex-handler-writeheader` |
 | Handler Process | 30 symbols | `/gortex-handler-process` |
-| Handler Writejson | 29 symbols | `/gortex-handler-writejson` |
+| Db Ocrdraftentry | 28 symbols | `/gortex-db-ocrdraftentry` |
+| Cmd Migrate To User 1 Dirs | 26 symbols | `/gortex-cmd-migrate-to-user-1-dirs` |
+| Handler Writejson | 25 symbols | `/gortex-handler-writejson` |
 <!-- gortex:skills:end -->
 
 <!-- gortex:communities:end -->

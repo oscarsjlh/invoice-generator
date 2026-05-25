@@ -25,15 +25,16 @@ type Config struct {
 	LogIncludeSource bool
 
 	// Auth configuration
-	AuthEnabled       bool
-	AuthDBPath        string
-	AuthMigrationsDir string
-	UserDBDir         string
-	WebAuthnRPID      string
-	WebAuthnRPOrigins []string
-	WebAuthnRPDisplay string
-	SessionTTL        time.Duration
-	TrustedProxy      bool
+	AuthEnabled         bool
+	RegistrationEnabled bool
+	AuthDBPath          string
+	AuthMigrationsDir   string
+	UserDBDir           string
+	WebAuthnRPID        string
+	WebAuthnRPOrigins   []string
+	WebAuthnRPDisplay   string
+	SessionTTL          time.Duration
+	TrustedProxy        bool
 }
 
 func Load() Config {
@@ -54,15 +55,16 @@ func Load() Config {
 		LogFormat:        getenv("LOG_FORMAT", "json"),
 		LogIncludeSource: getenv("LOG_INCLUDE_SOURCE", "") == "true",
 
-		AuthEnabled:       getenv("AUTH_ENABLED", "") != "false",
-		AuthDBPath:        getenv("AUTH_DB_PATH", "data/auth.db"),
-		AuthMigrationsDir: getenv("AUTH_MIGRATIONS_DIR", "auth-migrations"),
-		UserDBDir:         getenv("USER_DB_DIR", "data/users"),
-		WebAuthnRPID:      getenv("WEB_AUTHN_RP_ID", "localhost"),
-		WebAuthnRPOrigins: getenvSlice("WEB_AUTHN_RP_ORIGINS", []string{"http://localhost:8080"}),
-		WebAuthnRPDisplay: getenv("WEB_AUTHN_RP_DISPLAY", "Invoice App"),
-		SessionTTL:        getenvDuration("SESSION_TTL", 24*time.Hour),
-		TrustedProxy:      getenv("TRUSTED_PROXY", "") == "true",
+		AuthEnabled:         getenv("AUTH_ENABLED", "") != "false",
+		RegistrationEnabled: getenv("REGISTRATION_ENABLED", "") == "true",
+		AuthDBPath:          getenv("AUTH_DB_PATH", "data/auth.db"),
+		AuthMigrationsDir:   getenv("AUTH_MIGRATIONS_DIR", "auth-migrations"),
+		UserDBDir:           getenv("USER_DB_DIR", "data/users"),
+		WebAuthnRPID:        getenv("WEB_AUTHN_RP_ID", "localhost"),
+		WebAuthnRPOrigins:   getenvSlice("WEB_AUTHN_RP_ORIGINS", []string{"http://localhost:8080"}),
+		WebAuthnRPDisplay:   getenv("WEB_AUTHN_RP_DISPLAY", "Invoice App"),
+		SessionTTL:          getenvDuration("SESSION_TTL", 24*time.Hour),
+		TrustedProxy:        getenv("TRUSTED_PROXY", "") == "true",
 	}
 }
 
