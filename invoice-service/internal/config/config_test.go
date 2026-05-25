@@ -30,6 +30,9 @@ func TestConfigDefaults(t *testing.T) {
 	if cfg.OCREnabled {
 		t.Error("OCREnabled should be false by default")
 	}
+	if cfg.RegistrationEnabled {
+		t.Error("RegistrationEnabled should be false by default")
+	}
 }
 
 func TestConfigEnvOverrides(t *testing.T) {
@@ -85,6 +88,28 @@ func TestOCREnabled(t *testing.T) {
 	}
 }
 
+func TestRegistrationEnabled(t *testing.T) {
+	cleanEnv(t)
+
+	mustSetenv(t, "REGISTRATION_ENABLED", "true")
+	cfg := Load()
+	if !cfg.RegistrationEnabled {
+		t.Error("RegistrationEnabled should be true when REGISTRATION_ENABLED=true")
+	}
+
+	mustSetenv(t, "REGISTRATION_ENABLED", "false")
+	cfg = Load()
+	if cfg.RegistrationEnabled {
+		t.Error("RegistrationEnabled should be false when REGISTRATION_ENABLED=false")
+	}
+
+	mustUnsetenv(t, "REGISTRATION_ENABLED")
+	cfg = Load()
+	if cfg.RegistrationEnabled {
+		t.Error("RegistrationEnabled should be false when REGISTRATION_ENABLED is empty")
+	}
+}
+
 func TestSMTPConfig(t *testing.T) {
 	t.Parallel()
 	cleanEnv(t)
@@ -111,6 +136,9 @@ func cleanEnv(t *testing.T) {
 		"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM",
 		"OCR_SERVICE_URL", "OCR_ENABLED", "OCR_UPLOAD_DIR",
 		"LOG_LEVEL", "LOG_FORMAT", "LOG_INCLUDE_SOURCE",
+		"AUTH_ENABLED", "REGISTRATION_ENABLED", "AUTH_DB_PATH", "AUTH_MIGRATIONS_DIR",
+		"USER_DB_DIR", "WEB_AUTHN_RP_ID", "WEB_AUTHN_RP_ORIGINS",
+		"WEB_AUTHN_RP_DISPLAY", "SESSION_TTL", "TRUSTED_PROXY",
 	} {
 		mustUnsetenv(t, key)
 	}

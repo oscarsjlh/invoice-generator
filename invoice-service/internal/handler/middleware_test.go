@@ -240,14 +240,28 @@ func TestExtractCSRFTokenEmpty(t *testing.T) {
 func TestIsPublicPath(t *testing.T) {
 	t.Parallel()
 	assert.True(t, isPublicPath("/login"))
+	assert.True(t, isPublicPath("/login/begin"))
 	assert.True(t, isPublicPath("/register"))
+	assert.True(t, isPublicPath("/register/begin"))
 	assert.True(t, isPublicPath("/static/"))
 	assert.True(t, isPublicPath("/static/js/app.js"))
 	assert.True(t, isPublicPath("/health"))
+	assert.False(t, isPublicPath("/login-extra"))
+	assert.False(t, isPublicPath("/register-extra"))
 	assert.False(t, isPublicPath("/entries"))
 	assert.False(t, isPublicPath("/invoices"))
 	assert.False(t, isPublicPath("/settings"))
 	assert.False(t, isPublicPath("/"))
+}
+
+func TestAppPublicPathRemovesRegisterWhenDisabled(t *testing.T) {
+	t.Parallel()
+	ta := newTestAppWithAuth(t)
+	ta.app.cfg.RegistrationEnabled = false
+
+	assert.True(t, ta.app.isPublicPath("/login"))
+	assert.False(t, ta.app.isPublicPath("/register"))
+	assert.False(t, ta.app.isPublicPath("/register/begin"))
 }
 
 func TestAuthMiddlewarePublicPathPassesThrough(t *testing.T) {
@@ -278,7 +292,39 @@ func TestAuthMiddlewareNoSessionRedirects(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusSeeOther, w.Result().StatusCode)
-	assert.Contains(t, w.Result().Header.Get("Location"), "/login")
+	assert.Equal(t, "/login?next=%2Fentries&notice=signin_required", w.Result().Header.Get("Location"))
+}
+
+func TestAuthMiddlewareNoSessionPostRedirectsWithoutNext(t *testing.T) {
+	t.Parallel()
+	ta := newTestAppWithAuth(t)
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	handler := ta.app.authMiddleware(inner)
+
+	req := httptest.NewRequest("POST", "/entries", strings.NewReader(""))
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusSeeOther, w.Result().StatusCode)
+	assert.Equal(t, "/login?notice=signin_required", w.Result().Header.Get("Location"))
+}
+
+func TestAuthMiddlewareRegisterDisabledReturns404(t *testing.T) {
+	t.Parallel()
+	ta := newTestAppWithAuth(t)
+	ta.app.cfg.RegistrationEnabled = false
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := ta.app.authMiddleware(inner)
+
+	req := httptest.NewRequest("GET", "/register", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Result().StatusCode)
 }
 
 func TestAuthMiddlewareValidSessionPassesThrough(t *testing.T) {

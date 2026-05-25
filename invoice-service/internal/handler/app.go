@@ -55,6 +55,7 @@ type App struct {
 	renderer    *Renderer
 	ocrJobs     *OCRJobRunner
 	authEnabled bool
+	authLimiter *AuthRateLimiter
 }
 
 type DashboardPageData struct {
@@ -109,13 +110,16 @@ type InvoicePreviewPageData struct {
 }
 
 type LoginPageData struct {
-	Notice string
-	User   *db.User
+	Notice     string
+	NoticeKind string
+	Next       string
+	User       *db.User
 }
 
 type RegisterPageData struct {
-	Notice string
-	User   *db.User
+	Notice     string
+	NoticeKind string
+	User       *db.User
 }
 
 func New(multiStore *db.MultiStore, authDB *db.AuthDB, webAuthn *auth.WebAuthnManager, sessions *auth.SessionManager, cfg config.Config, logger *slog.Logger) *App {
@@ -129,8 +133,9 @@ func New(multiStore *db.MultiStore, authDB *db.AuthDB, webAuthn *auth.WebAuthnMa
 		logger:      logger,
 		authEnabled: cfg.AuthEnabled,
 	}
-	app.renderer = NewRenderer(logger, func() bool { return app.authEnabled }, func() bool { return app.cfg.OCREnabled })
+	app.renderer = NewRenderer(logger, func() bool { return app.authEnabled }, func() bool { return app.cfg.RegistrationEnabled }, func() bool { return app.cfg.OCREnabled })
 	app.ocrJobs = NewOCRJobRunner(app.stores, &app.cfg)
+	app.authLimiter = NewAuthRateLimiter(cfg.TrustedProxy)
 	return app
 }
 
@@ -160,11 +165,13 @@ func (a *App) Routes() http.Handler {
 
 	if a.authEnabled {
 		mux.HandleFunc("GET /login", a.loginPage)
-		mux.HandleFunc("POST /login/begin", a.beginLogin)
-		mux.HandleFunc("POST /login/finish", a.finishLogin)
-		mux.HandleFunc("GET /register", a.registerPage)
-		mux.HandleFunc("POST /register/begin", a.beginRegistration)
-		mux.HandleFunc("POST /register/finish", a.finishRegistration)
+		mux.Handle("POST /login/begin", a.authLimiter.Middleware(authLimitLoginBegin)(http.HandlerFunc(a.beginLogin)))
+		mux.Handle("POST /login/finish", a.authLimiter.Middleware(authLimitLoginFinish)(http.HandlerFunc(a.finishLogin)))
+		if a.cfg.RegistrationEnabled {
+			mux.HandleFunc("GET /register", a.registerPage)
+			mux.Handle("POST /register/begin", a.authLimiter.Middleware(authLimitRegisterBegin)(http.HandlerFunc(a.beginRegistration)))
+			mux.Handle("POST /register/finish", a.authLimiter.Middleware(authLimitRegisterFinish)(http.HandlerFunc(a.finishRegistration)))
+		}
 		mux.HandleFunc("POST /logout", a.logout)
 	}
 	mux.HandleFunc("GET /health", a.health)
@@ -198,18 +205,27 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("POST /ocr/import/{id}/confirm", a.ocrConfirmDrafts)
 	mux.HandleFunc("POST /ocr/import/{id}/delete", a.ocrDeleteSession)
 
-	handler := recoverMiddleware(SecurityHeadersMiddleware()(LoggerMiddleware(a.logger)(RequestLoggingMiddleware()(a.authMiddleware(CSRFMiddleware()(mux))))))
+	handler := recoverMiddleware(SecurityHeadersMiddleware()(LoggerMiddleware(a.logger)(RequestLoggingMiddleware()(a.authMiddleware(CSRFMiddlewareWithPublic(a.isPublicPath)(mux))))))
 	return otelhttp.NewHandler(handler, "http.server")
 }
 
 // publicPaths are paths that do not require authentication.
-var publicPaths = []string{"/login", "/register", "/static/", "/health"}
+func (a *App) isPublicPath(path string) bool {
+	if path == "/login" || strings.HasPrefix(path, "/login/") || path == "/health" || strings.HasPrefix(path, "/static/") {
+		return true
+	}
+	if a.cfg.RegistrationEnabled && (path == "/register" || strings.HasPrefix(path, "/register/")) {
+		return true
+	}
+	return isE2EPublicPath(path)
+}
 
 func isPublicPath(path string) bool {
-	for _, p := range publicPaths {
-		if path == p || strings.HasPrefix(path, p) {
-			return true
-		}
+	if path == "/login" || strings.HasPrefix(path, "/login/") || path == "/health" || strings.HasPrefix(path, "/static/") {
+		return true
+	}
+	if path == "/register" || strings.HasPrefix(path, "/register/") {
+		return true
 	}
 	return isE2EPublicPath(path)
 }
@@ -233,14 +249,19 @@ func (a *App) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if isPublicPath(r.URL.Path) {
+		if !a.cfg.RegistrationEnabled && (r.URL.Path == "/register" || strings.HasPrefix(r.URL.Path, "/register/")) {
+			http.NotFound(w, r)
+			return
+		}
+
+		if a.isPublicPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
 
 		user, err := a.sessions.GetUserFromRequest(r)
 		if err != nil || user == nil {
-			a.redirect(w, r, "/login", "Please sign in")
+			a.redirect(w, r, loginRedirectPath(r), noticeSignInRequired)
 			return
 		}
 

@@ -5,9 +5,13 @@ import (
 )
 
 func CSRFMiddleware() func(http.Handler) http.Handler {
+	return CSRFMiddlewareWithPublic(isPublicPath)
+}
+
+func CSRFMiddlewareWithPublic(publicPath func(string) bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if isPublicPath(r.URL.Path) {
+			if publicPath(r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
 			}

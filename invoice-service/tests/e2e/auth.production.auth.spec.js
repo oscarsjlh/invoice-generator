@@ -77,7 +77,7 @@ test('unauthenticated protected route redirects and logout invalidates access', 
   const baseURL = testInfo.project.use.baseURL;
   const unauthenticated = await browser.newPage({ baseURL });
   await unauthenticated.goto('/entries');
-  await expect(unauthenticated).toHaveURL(/\/login\?notice=/);
+  await expect(unauthenticated).toHaveURL(/\/login\?next=%2Fentries&notice=signin_required/);
   await expect(unauthenticated.getByText('Please sign in')).toBeVisible();
   await unauthenticated.close();
 
@@ -89,9 +89,9 @@ test('unauthenticated protected route redirects and logout invalidates access', 
   expect(response.ok()).toBe(true);
   await gotoOK(page, '/entries');
   await page.getByRole('button', { name: 'Logout' }).click();
-  await expect(page).toHaveURL(/\/login\?notice=/);
+  await expect(page).toHaveURL(/\/login\?notice=signed_out/);
   await page.goto('/entries');
-  await expect(page).toHaveURL(/\/login\?notice=/);
+  await expect(page).toHaveURL(/\/login\?next=%2Fentries&notice=signin_required/);
   await context.close();
 });
 

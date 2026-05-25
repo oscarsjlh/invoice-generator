@@ -46,14 +46,25 @@ func NewWebAuthnManager(authDB *db.AuthDB, cfg AuthConfig) (*WebAuthnManager, er
 }
 
 type pendingSession struct {
-	Session   webauthn.SessionData
-	Kind      string // "reg" or "login"
-	UserID    int64  // user id for reg/login flows (DB id created at begin)
-	CreatedAt time.Time
+	Session        webauthn.SessionData
+	Kind           string // "reg" or "login"
+	UserID         int64  // user id for login flows
+	Username       string
+	DisplayName    string
+	WebAuthnUserID string
+	CreatedAt      time.Time
 }
 
 func (m *WebAuthnManager) genSessionID() (string, error) {
 	b := make([]byte, 24)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+func (m *WebAuthnManager) genWebAuthnUserID() (string, error) {
+	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
@@ -70,16 +81,6 @@ func (m *WebAuthnManager) cleanupLoop() {
 		m.mu.Lock()
 		for k, v := range m.sessions {
 			if v.CreatedAt.Before(cutoff) {
-				// if a pending registration left an orphaned user (no creds), delete it
-				if v.Kind == "reg" && v.UserID != 0 {
-					// attempt to delete user if they have no credentials
-					if creds, err := m.adb.GetCredentials(v.UserID); err == nil {
-						if len(creds) == 0 {
-							// ignore error
-							_ = m.adb.DeleteUser(v.UserID)
-						}
-					}
-				}
 				delete(m.sessions, k)
 			}
 		}
@@ -88,7 +89,7 @@ func (m *WebAuthnManager) cleanupLoop() {
 }
 
 func (m *WebAuthnManager) BeginRegistration(username, displayName string) (string, *protocol.CredentialCreation, error) {
-	existing, err := m.adb.GetUserByUsernameForAuth(username)
+	existing, err := m.adb.GetUserByUsernameFold(username)
 	if err != nil {
 		return "", nil, fmt.Errorf("check existing user: %w", err)
 	}
@@ -96,16 +97,12 @@ func (m *WebAuthnManager) BeginRegistration(username, displayName string) (strin
 		return "", nil, fmt.Errorf("username already taken")
 	}
 
-	userID, err := m.adb.CreateUser(username, displayName)
+	webAuthnUserID, err := m.genWebAuthnUserID()
 	if err != nil {
-		return "", nil, fmt.Errorf("create user: %w", err)
+		return "", nil, fmt.Errorf("gen webauthn user id: %w", err)
 	}
 
-	user, err := m.adb.GetUserByID(userID)
-	if err != nil {
-		return "", nil, fmt.Errorf("get new user: %w", err)
-	}
-
+	user := &db.User{Username: username, DisplayName: displayName, WebAuthnUserID: webAuthnUserID}
 	wuser := NewWebAuthnUser(user)
 
 	options, session, err := m.web.BeginRegistration(wuser)
@@ -118,7 +115,7 @@ func (m *WebAuthnManager) BeginRegistration(username, displayName string) (strin
 		return "", nil, fmt.Errorf("gen session id: %w", err)
 	}
 	m.mu.Lock()
-	m.sessions[sid] = pendingSession{Session: *session, Kind: "reg", UserID: userID, CreatedAt: time.Now()}
+	m.sessions[sid] = pendingSession{Session: *session, Kind: "reg", Username: username, DisplayName: displayName, WebAuthnUserID: webAuthnUserID, CreatedAt: time.Now()}
 	m.mu.Unlock()
 
 	return sid, options, nil
@@ -134,14 +131,15 @@ func (m *WebAuthnManager) FinishRegistration(sessionID string, r *http.Request) 
 	delete(m.sessions, sessionID)
 	m.mu.Unlock()
 
-	user, err := m.adb.GetUserByID(ps.UserID)
+	existing, err := m.adb.GetUserByUsernameFold(ps.Username)
 	if err != nil {
-		return 0, nil, fmt.Errorf("get user: %w", err)
+		return 0, nil, fmt.Errorf("check existing user: %w", err)
 	}
-	if user == nil {
-		return 0, nil, fmt.Errorf("user not found")
+	if existing != nil {
+		return 0, nil, fmt.Errorf("username already taken")
 	}
 
+	user := &db.User{Username: ps.Username, DisplayName: ps.DisplayName, WebAuthnUserID: ps.WebAuthnUserID}
 	wuser := NewWebAuthnUser(user)
 
 	credential, err := m.web.FinishRegistration(wuser, ps.Session, r)
@@ -149,11 +147,16 @@ func (m *WebAuthnManager) FinishRegistration(sessionID string, r *http.Request) 
 		return 0, nil, fmt.Errorf("finish registration: %w", err)
 	}
 
-	if err := m.adb.SaveCredential(credential, ps.UserID); err != nil {
+	userID, err := m.adb.CreateUserWithWebAuthnID(ps.Username, ps.DisplayName, ps.WebAuthnUserID)
+	if err != nil {
+		return 0, nil, fmt.Errorf("create user: %w", err)
+	}
+
+	if err := m.adb.SaveCredential(credential, userID); err != nil {
 		return 0, nil, fmt.Errorf("save credential: %w", err)
 	}
 
-	return ps.UserID, credential, nil
+	return userID, credential, nil
 }
 
 func (m *WebAuthnManager) BeginLogin(username string) (string, *protocol.CredentialAssertion, int64, error) {

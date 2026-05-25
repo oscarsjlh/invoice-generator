@@ -10,7 +10,7 @@ services:
     env_file: .env
     environment:
       OCR_ENABLED: "true"
-      AUTH_ENABLED: "true"
+      AUTH_ENABLED: "false"
       OCR_SERVICE_URL: "http://ocr-service:8000"
       OCR_UPLOAD_DIR: "/app/data/ocr-uploads"
       AUTH_DB_PATH: "/app/data/auth.db"

@@ -266,6 +266,44 @@ article.notice {
   box-shadow: none;
 }
 
+.auth-card {
+  max-width: 30rem;
+  margin: 4rem auto;
+}
+
+.auth-switch {
+  text-align: center;
+  margin-top: var(--spacing-md);
+}
+
+.auth-notice,
+.auth-status {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.auth-status:empty {
+  display: none;
+}
+
+.auth-notice-info {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+}
+
+.auth-notice-success {
+  background: var(--success-bg);
+  border-color: var(--success);
+  color: var(--success-text);
+}
+
+.auth-status-error {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 /* ---- Tables ---- */
 figure {
   margin: var(--spacing-lg) 0;
