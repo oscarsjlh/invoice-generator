@@ -45,17 +45,17 @@ func (a *App) StoreForTest() *db.MultiStore {
 }
 
 type App struct {
-	multiStore  *db.MultiStore
-	stores      *RequestStoreProvider
-	authDB      *db.AuthDB
-	webAuthn    *auth.WebAuthnManager
-	sessions    *auth.SessionManager
-	cfg         config.Config
-	logger      *slog.Logger
-	renderer    *Renderer
-	ocrJobs     *OCRJobRunner
-	authEnabled bool
-	authLimiter *AuthRateLimiter
+	multiStore   *db.MultiStore
+	stores       *RequestStoreProvider
+	authDB       *db.AuthDB
+	webAuthn     *auth.WebAuthnManager
+	sessionCookie *auth.SessionCookie
+	cfg          config.Config
+	logger       *slog.Logger
+	renderer     *Renderer
+	ocrJobs      *OCRJobRunner
+	authEnabled  bool
+	authLimiter  *AuthRateLimiter
 }
 
 type DashboardPageData struct {
@@ -109,29 +109,16 @@ type InvoicePreviewPageData struct {
 	User    *db.User
 }
 
-type LoginPageData struct {
-	Notice     string
-	NoticeKind string
-	Next       string
-	User       *db.User
-}
-
-type RegisterPageData struct {
-	Notice     string
-	NoticeKind string
-	User       *db.User
-}
-
-func New(multiStore *db.MultiStore, authDB *db.AuthDB, webAuthn *auth.WebAuthnManager, sessions *auth.SessionManager, cfg config.Config, logger *slog.Logger) *App {
+func New(multiStore *db.MultiStore, authDB *db.AuthDB, webAuthn *auth.WebAuthnManager, sessionCookie *auth.SessionCookie, cfg config.Config, logger *slog.Logger) *App {
 	app := &App{
-		multiStore:  multiStore,
-		stores:      NewRequestStoreProvider(multiStore),
-		authDB:      authDB,
-		webAuthn:    webAuthn,
-		sessions:    sessions,
-		cfg:         cfg,
-		logger:      logger,
-		authEnabled: cfg.AuthEnabled,
+		multiStore:    multiStore,
+		stores:        NewRequestStoreProvider(multiStore),
+		authDB:        authDB,
+		webAuthn:      webAuthn,
+		sessionCookie: sessionCookie,
+		cfg:           cfg,
+		logger:        logger,
+		authEnabled:   cfg.AuthEnabled,
 	}
 	app.renderer = NewRenderer(logger, func() bool { return app.authEnabled }, func() bool { return app.cfg.RegistrationEnabled }, func() bool { return app.cfg.OCREnabled })
 	app.ocrJobs = NewOCRJobRunner(app.stores, &app.cfg)
@@ -163,47 +150,30 @@ func (a *App) renderPartial(w http.ResponseWriter, status int, name string, data
 func (a *App) Routes() http.Handler {
 	mux := http.NewServeMux()
 
-	if a.authEnabled {
-		mux.HandleFunc("GET /login", a.loginPage)
-		mux.Handle("POST /login/begin", a.authLimiter.Middleware(authLimitLoginBegin)(http.HandlerFunc(a.beginLogin)))
-		mux.Handle("POST /login/finish", a.authLimiter.Middleware(authLimitLoginFinish)(http.HandlerFunc(a.finishLogin)))
-		if a.cfg.RegistrationEnabled {
-			mux.HandleFunc("GET /register", a.registerPage)
-			mux.Handle("POST /register/begin", a.authLimiter.Middleware(authLimitRegisterBegin)(http.HandlerFunc(a.beginRegistration)))
-			mux.Handle("POST /register/finish", a.authLimiter.Middleware(authLimitRegisterFinish)(http.HandlerFunc(a.finishRegistration)))
-		}
-		mux.HandleFunc("POST /logout", a.logout)
-	}
+	authHandlers := NewAuthHandlers(a.webAuthn, a.sessionCookie, a.renderer, a.authLimiter, a.cfg.AuthEnabled, a.cfg.RegistrationEnabled)
+	authHandlers.Routes(mux)
+
+	entryHandlers := NewEntryHandlers(a.renderer)
+	entryHandlers.Routes(mux)
+
+	rateHandlers := NewRateHandlers(a.renderer)
+	rateHandlers.Routes(mux)
+
+	invoiceHandlers := NewInvoiceHandlers(a.renderer, a.cfg)
+	invoiceHandlers.Routes(mux)
+
+	settingsHandlers := NewSettingsHandlers(a.renderer)
+	settingsHandlers.Routes(mux)
+
+	ocrHandlers := NewOCRHandlers(a.renderer, a.ocrJobs, a.cfg)
+	ocrHandlers.Routes(mux)
+
 	mux.HandleFunc("GET /health", a.health)
 	a.registerE2EHelperRoutes(mux)
 	mux.HandleFunc("GET /static/", func(w http.ResponseWriter, r *http.Request) {
 		http.StripPrefix("/static/", http.FileServerFS(static.FS)).ServeHTTP(w, r)
 	})
 	mux.HandleFunc("GET /", a.dashboard)
-	mux.HandleFunc("GET /entries", a.entriesPage)
-	mux.HandleFunc("GET /entries/table", a.entriesTable)
-	mux.HandleFunc("POST /entries", a.createEntry)
-	mux.HandleFunc("GET /entries/{id}/edit", a.editEntryForm)
-	mux.HandleFunc("POST /entries/{id}", a.updateEntry)
-	mux.HandleFunc("POST /entries/{id}/delete", a.deleteEntry)
-	mux.HandleFunc("GET /rates", a.ratesPage)
-	mux.HandleFunc("GET /rates/table", a.ratesTable)
-	mux.HandleFunc("POST /rates", a.createRate)
-	mux.HandleFunc("POST /rates/{id}/delete", a.deleteRate)
-	mux.HandleFunc("GET /rates/{id}/edit", a.editRateForm)
-	mux.HandleFunc("POST /rates/{id}", a.updateRate)
-	mux.HandleFunc("GET /invoices", a.invoicesPage)
-	mux.HandleFunc("POST /invoices/generate", a.generateInvoice)
-	mux.HandleFunc("GET /invoices/{id}", a.invoicePreview)
-	mux.HandleFunc("GET /invoices/{id}/pdf", a.invoicePDF)
-	mux.HandleFunc("POST /invoices/{id}/send", a.sendInvoice)
-	mux.HandleFunc("GET /settings", a.settingsPage)
-	mux.HandleFunc("POST /settings", a.saveSettings)
-	mux.HandleFunc("GET /ocr/import", a.ocrUploadPage)
-	mux.HandleFunc("POST /ocr/import", a.ocrStartSession)
-	mux.HandleFunc("GET /ocr/import/{id}", a.ocrSessionStatus)
-	mux.HandleFunc("POST /ocr/import/{id}/confirm", a.ocrConfirmDrafts)
-	mux.HandleFunc("POST /ocr/import/{id}/delete", a.ocrDeleteSession)
 
 	handler := recoverMiddleware(SecurityHeadersMiddleware()(LoggerMiddleware(a.logger)(RequestLoggingMiddleware()(a.authMiddleware(CSRFMiddlewareWithPublic(a.isPublicPath)(mux))))))
 	return otelhttp.NewHandler(handler, "http.server")
@@ -211,7 +181,7 @@ func (a *App) Routes() http.Handler {
 
 // publicPaths are paths that do not require authentication.
 func (a *App) isPublicPath(path string) bool {
-	if path == "/login" || strings.HasPrefix(path, "/login/") || path == "/health" || strings.HasPrefix(path, "/static/") {
+	if path == "/login" || strings.HasPrefix(path, "/login/") || path == "/health" || strings.HasPrefix(path, "/static/") || path == "/auth/username-policy" {
 		return true
 	}
 	if a.cfg.RegistrationEnabled && (path == "/register" || strings.HasPrefix(path, "/register/")) {
@@ -221,7 +191,7 @@ func (a *App) isPublicPath(path string) bool {
 }
 
 func isPublicPath(path string) bool {
-	if path == "/login" || strings.HasPrefix(path, "/login/") || path == "/health" || strings.HasPrefix(path, "/static/") {
+	if path == "/login" || strings.HasPrefix(path, "/login/") || path == "/health" || strings.HasPrefix(path, "/static/") || path == "/auth/username-policy" {
 		return true
 	}
 	if path == "/register" || strings.HasPrefix(path, "/register/") {
@@ -234,10 +204,7 @@ func (a *App) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !a.authEnabled {
 			secure := r.TLS != nil
-			if a.sessions != nil {
-				secure = a.sessions.IsSecure(r)
-			}
-			ensureCSRFCookie(w, r, secure)
+			auth.EnsureCSRFCookie(w, r, secure)
 			store, user, err := a.stores.ForRequest(r, nil)
 			if err != nil {
 				http.Error(w, "auth disabled but no legacy store configured", http.StatusInternalServerError)
@@ -259,13 +226,13 @@ func (a *App) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		user, err := a.sessions.GetUserFromRequest(r)
+		user, err := a.sessionCookie.Get(r)
 		if err != nil || user == nil {
-			a.redirect(w, r, loginRedirectPath(r), noticeSignInRequired)
+			redirect(w, r, loginRedirectPath(r), noticeSignInRequired)
 			return
 		}
 
-		ensureCSRFCookie(w, r, a.sessions.IsSecure(r))
+		a.sessionCookie.EnsureCSRF(w, r)
 
 		store, user, err := a.stores.ForRequest(r, user)
 		if err != nil {
@@ -280,7 +247,7 @@ func (a *App) authMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (a *App) redirect(w http.ResponseWriter, r *http.Request, path string, notice string) {
+func redirect(w http.ResponseWriter, r *http.Request, path string, notice string) {
 	if notice != "" {
 		separator := "?"
 		if strings.Contains(path, "?") {

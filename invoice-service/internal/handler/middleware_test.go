@@ -335,7 +335,7 @@ func TestAuthMiddlewareValidSessionPassesThrough(t *testing.T) {
 
 	sessW := httptest.NewRecorder()
 	sessReq := httptest.NewRequest("GET", "/", nil)
-	assert.NoError(t, ta.sm.CreateSession(sessW, sessReq, id))
+	assert.NoError(t, ta.sc.Set(sessW, sessReq, id))
 	sessW.Flush()
 
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

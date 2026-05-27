@@ -7,14 +7,33 @@ import (
 	"strconv"
 	"strings"
 
+	"invoice-app/internal/config"
 	"invoice-app/internal/db"
 	"invoice-app/internal/ocrimport"
 )
 
 const ocrMaxRequestBytes = 64 << 20
 
-func (a *App) ocrUploadPage(w http.ResponseWriter, r *http.Request) {
-	if !a.cfg.OCREnabled {
+type OCRHandlers struct {
+	renderer *Renderer
+	ocrJobs  *OCRJobRunner
+	cfg      config.Config
+}
+
+func NewOCRHandlers(renderer *Renderer, ocrJobs *OCRJobRunner, cfg config.Config) *OCRHandlers {
+	return &OCRHandlers{renderer: renderer, ocrJobs: ocrJobs, cfg: cfg}
+}
+
+func (h *OCRHandlers) Routes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /ocr/import", h.ocrUploadPage)
+	mux.HandleFunc("POST /ocr/import", h.ocrStartSession)
+	mux.HandleFunc("GET /ocr/import/{id}", h.ocrSessionStatus)
+	mux.HandleFunc("POST /ocr/import/{id}/confirm", h.ocrConfirmDrafts)
+	mux.HandleFunc("POST /ocr/import/{id}/delete", h.ocrDeleteSession)
+}
+
+func (h *OCRHandlers) ocrUploadPage(w http.ResponseWriter, r *http.Request) {
+	if !h.cfg.OCREnabled {
 		http.Error(w, "OCR import is not enabled", http.StatusNotFound)
 		return
 	}
@@ -35,11 +54,11 @@ func (a *App) ocrUploadPage(w http.ResponseWriter, r *http.Request) {
 		Notice:   noticeFromRequest(r),
 	}
 
-	a.renderPage(w, r, http.StatusOK, "ocr_upload.html", data)
+	h.renderer.Page(w, r, http.StatusOK, "ocr_upload.html", data)
 }
 
-func (a *App) ocrStartSession(w http.ResponseWriter, r *http.Request) {
-	if !a.cfg.OCREnabled {
+func (h *OCRHandlers) ocrStartSession(w http.ResponseWriter, r *http.Request) {
+	if !h.cfg.OCREnabled {
 		http.Error(w, "OCR import is not enabled", http.StatusNotFound)
 		return
 	}
@@ -58,7 +77,7 @@ func (a *App) ocrStartSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	importer := a.ocrImporter(store)
+	importer := h.ocrImporter(store)
 	sessionID, err := importer.StartSession(r.Context(), ocrimport.StartSessionInput{Files: files})
 	if errors.Is(err, ocrimport.ErrTooManyFiles) || errors.Is(err, ocrimport.ErrNoImages) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -69,17 +88,17 @@ func (a *App) ocrStartSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	if a.cfg.OCRServiceURL != "" {
+	if h.cfg.OCRServiceURL != "" {
 		user := UserFromContext(r.Context())
 		if user != nil {
-			a.ocrJobs.Start(r.Context(), sessionID, user.ID)
+			h.ocrJobs.Start(r.Context(), sessionID, user.ID)
 		}
 	}
-	a.redirect(w, r, "/ocr/import/"+strconv.FormatInt(sessionID, 10), "Import session created")
+	redirect(w, r, "/ocr/import/"+strconv.FormatInt(sessionID, 10), "Import session created")
 }
 
-func (a *App) ocrSessionStatus(w http.ResponseWriter, r *http.Request) {
-	if !a.cfg.OCREnabled {
+func (h *OCRHandlers) ocrSessionStatus(w http.ResponseWriter, r *http.Request) {
+	if !h.cfg.OCREnabled {
 		http.Error(w, "OCR import is not enabled", http.StatusNotFound)
 		return
 	}
@@ -125,11 +144,11 @@ func (a *App) ocrSessionStatus(w http.ResponseWriter, r *http.Request) {
 		Notice:     noticeFromRequest(r),
 	}
 
-	a.renderPage(w, r, http.StatusOK, "ocr_review.html", data)
+	h.renderer.Page(w, r, http.StatusOK, "ocr_review.html", data)
 }
 
-func (a *App) ocrConfirmDrafts(w http.ResponseWriter, r *http.Request) {
-	if !a.cfg.OCREnabled {
+func (h *OCRHandlers) ocrConfirmDrafts(w http.ResponseWriter, r *http.Request) {
+	if !h.cfg.OCREnabled {
 		http.Error(w, "OCR import is not enabled", http.StatusNotFound)
 		return
 	}
@@ -186,11 +205,11 @@ func (a *App) ocrConfirmDrafts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(confirmedIDs) == 0 {
-		a.redirect(w, r, fmt.Sprintf("/ocr/import/%d", sessionID), "Select at least one entry to confirm")
+		redirect(w, r, fmt.Sprintf("/ocr/import/%d", sessionID), "Select at least one entry to confirm")
 		return
 	}
 
-	importer := a.ocrImporter(store)
+	importer := h.ocrImporter(store)
 	ocrEdits := make(map[int64]ocrimport.DraftEdit, len(edits))
 	for id, e := range edits {
 		ocrEdits[id] = ocrimport.DraftEdit{
@@ -207,7 +226,7 @@ func (a *App) ocrConfirmDrafts(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		LoggerFromContext(r.Context()).Warn("confirm ocr drafts", "session_id", sessionID, "error", err)
-		a.redirect(w, r, fmt.Sprintf("/ocr/import/%d", sessionID), err.Error())
+		redirect(w, r, fmt.Sprintf("/ocr/import/%d", sessionID), err.Error())
 		return
 	}
 
@@ -215,7 +234,7 @@ func (a *App) ocrConfirmDrafts(w http.ResponseWriter, r *http.Request) {
 	if len(result.Skipped) > 0 {
 		notice += fmt.Sprintf(", %d skipped (missing data)", len(result.Skipped))
 	}
-	a.redirect(w, r, "/entries", notice)
+	redirect(w, r, "/entries", notice)
 }
 
 func mergeDraftCategories(categories []string, drafts []db.OCRDraftEntry) []string {
@@ -242,8 +261,8 @@ func mergeDraftCategories(categories []string, drafts []db.OCRDraftEntry) []stri
 	return merged
 }
 
-func (a *App) ocrDeleteSession(w http.ResponseWriter, r *http.Request) {
-	if !a.cfg.OCREnabled {
+func (h *OCRHandlers) ocrDeleteSession(w http.ResponseWriter, r *http.Request) {
+	if !h.cfg.OCREnabled {
 		http.Error(w, "OCR import is not enabled", http.StatusNotFound)
 		return
 	}
@@ -256,15 +275,15 @@ func (a *App) ocrDeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	importer := a.ocrImporter(store)
+	importer := h.ocrImporter(store)
 	if err := importer.DeleteSession(r.Context(), id); err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	a.redirect(w, r, "/ocr/import", "Import session deleted")
+	redirect(w, r, "/ocr/import", "Import session deleted")
 }
 
-func (a *App) ocrImporter(store ocrimport.Store) *ocrimport.Importer {
-	return a.ocrJobs.importer(store)
+func (h *OCRHandlers) ocrImporter(store ocrimport.Store) *ocrimport.Importer {
+	return h.ocrJobs.importer(store)
 }

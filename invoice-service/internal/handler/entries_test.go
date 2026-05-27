@@ -28,7 +28,7 @@ func TestCreateEntryValid(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.createEntry(w, req)
+	ta.eh.createEntry(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
@@ -47,7 +47,7 @@ func TestCreateEntryMissingCategory(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.createEntry(w, req)
+	ta.eh.createEntry(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
@@ -66,7 +66,7 @@ func TestCreateEntryInvalidHours(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.createEntry(w, req)
+	ta.eh.createEntry(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
@@ -83,7 +83,7 @@ func TestEntriesTableReturnsPartial(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.entriesTable(w, req)
+	ta.eh.entriesTable(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -103,7 +103,7 @@ func TestDeleteEntryRedirects(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.deleteEntry(w, req)
+	ta.eh.deleteEntry(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
@@ -122,7 +122,7 @@ func TestEditEntryFormReturnsPartial(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.editEntryForm(w, req)
+	ta.eh.editEntryForm(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -140,7 +140,7 @@ func TestEditEntryFormNotFound(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.editEntryForm(w, req)
+	ta.eh.editEntryForm(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
@@ -163,7 +163,7 @@ func TestUpdateEntrySuccess(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.updateEntry(w, req)
+	ta.eh.updateEntry(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -187,7 +187,7 @@ func TestUpdateEntryMissingCategory(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.updateEntry(w, req)
+	ta.eh.updateEntry(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
@@ -196,6 +196,11 @@ func TestUpdateEntryMissingCategory(t *testing.T) {
 type testApp struct {
 	app   *App
 	store *db.Store
+	eh    *EntryHandlers
+	rh    *RateHandlers
+	ih    *InvoiceHandlers
+	sh    *SettingsHandlers
+	oh    *OCRHandlers
 }
 
 func newTestApp(t *testing.T) *testApp {
@@ -210,5 +215,14 @@ func newTestApp(t *testing.T) *testApp {
 	logger := NewLogger("error", "text", false)
 	multiStore := db.NewMultiStore(t.TempDir(), testutil.MigrationsDir(t))
 	multiStore.SetLegacyStore(store)
-	return &testApp{app: New(multiStore, nil, nil, nil, cfg, logger), store: store}
+	app := New(multiStore, nil, nil, nil, cfg, logger)
+	return &testApp{
+		app:   app,
+		store: store,
+		eh:    NewEntryHandlers(app.renderer),
+		rh:    NewRateHandlers(app.renderer),
+		ih:    NewInvoiceHandlers(app.renderer, cfg),
+		sh:    NewSettingsHandlers(app.renderer),
+		oh:    NewOCRHandlers(app.renderer, nil, cfg),
+	}
 }

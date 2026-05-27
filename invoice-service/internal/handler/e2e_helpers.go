@@ -37,7 +37,7 @@ func (a *App) e2eCreateSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "e2e helpers disabled", http.StatusForbidden)
 		return
 	}
-	if !a.authEnabled || a.authDB == nil || a.sessions == nil {
+	if !a.authEnabled || a.authDB == nil || a.sessionCookie == nil {
 		http.Error(w, "auth helpers require auth-enabled app", http.StatusBadRequest)
 		return
 	}
@@ -77,7 +77,7 @@ func (a *App) e2eCreateSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := a.sessions.CreateSession(w, r, user.ID); err != nil {
+	if err := a.sessionCookie.Set(w, r, user.ID); err != nil {
 		a.logger.Error("e2e create session", "user_id", user.ID, "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return

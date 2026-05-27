@@ -1,6 +1,25 @@
 (function () {
-  const usernameMessage = 'Use 3-32 characters: lowercase letters, numbers, dots, underscores, or hyphens. Start with a letter or number.';
-  const usernamePattern = /^[a-z0-9][a-z0-9._-]{2,31}$/;
+  const fallbackPattern = /^[a-z0-9][a-z0-9._-]{2,31}$/;
+  const fallbackMessage = 'Use 3-32 characters: lowercase letters, numbers, dots, underscores, or hyphens. Start with a letter or number.';
+
+  let cachedPolicy = null;
+
+  async function fetchUsernamePolicy() {
+    if (cachedPolicy) return cachedPolicy;
+    try {
+      const resp = await fetch('/auth/username-policy');
+      if (resp.ok) {
+        const policy = await resp.json();
+        cachedPolicy = {
+          pattern: new RegExp(policy.pattern),
+          message: policy.message,
+        };
+        return cachedPolicy;
+      }
+    } catch (_) {}
+    cachedPolicy = { pattern: fallbackPattern, message: fallbackMessage };
+    return cachedPolicy;
+  }
 
   function base64urlToBuffer(base64url) {
     const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
@@ -29,11 +48,12 @@
     return value.trim().toLowerCase();
   }
 
-  function validatedUsername(input) {
+  async function validatedUsername(input) {
+    const policy = await fetchUsernamePolicy();
     const username = normalizeUsername(input.value);
     input.value = username;
-    if (!usernamePattern.test(username)) {
-      throw new Error(usernameMessage);
+    if (!policy.pattern.test(username)) {
+      throw new Error(policy.message);
     }
     return username;
   }
@@ -127,7 +147,7 @@
     setStatus('', '');
 
     try {
-      const username = validatedUsername(input);
+      const username = await validatedUsername(input);
       button.textContent = 'Signing in...';
 
       const beginResp = await fetch('/login/begin', {
@@ -171,7 +191,7 @@
     setStatus('', '');
 
     try {
-      const username = validatedUsername(input);
+      const username = await validatedUsername(input);
       button.textContent = 'Creating...';
 
       const beginResp = await fetch('/register/begin', {

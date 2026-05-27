@@ -25,7 +25,7 @@ func TestSettingsPageReturnsSavedValues(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.settingsPage(w, req)
+	ta.sh.settingsPage(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -48,7 +48,7 @@ func TestSaveSettingsRedirects(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.saveSettings(w, req)
+	ta.sh.saveSettings(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)

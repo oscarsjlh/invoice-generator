@@ -19,7 +19,7 @@ func TestRatesPageReturns200(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.ratesPage(w, req)
+	ta.rh.ratesPage(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -41,7 +41,7 @@ func TestCreateRateValid(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.createRate(w, req)
+	ta.rh.createRate(w, req)
 
 	resp := w.Result()
 	body, _ := io.ReadAll(resp.Body)
@@ -64,7 +64,7 @@ func TestCreateRateMissingCategory(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.createRate(w, req)
+	ta.rh.createRate(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
@@ -82,7 +82,7 @@ func TestDeleteRate(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.deleteRate(w, req)
+	ta.rh.deleteRate(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
@@ -104,7 +104,7 @@ func TestEditRateFormReturnsPartial(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.editRateForm(w, req)
+	ta.rh.editRateForm(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -122,7 +122,7 @@ func TestEditRateFormNotFound(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.editRateForm(w, req)
+	ta.rh.editRateForm(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
@@ -145,7 +145,7 @@ func TestUpdateRateSuccess(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.updateRate(w, req)
+	ta.rh.updateRate(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -168,7 +168,7 @@ func TestUpdateRateMissingCategory(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.updateRate(w, req)
+	ta.rh.updateRate(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)

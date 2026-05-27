@@ -12,23 +12,23 @@ import (
 
 const sessionCookieName = "invoice_session"
 
-type SessionManager struct {
+type SessionCookie struct {
 	authDB       *db.AuthDB
 	ttl          time.Duration
 	trustedProxy bool
 }
 
-func NewSessionManager(authDB *db.AuthDB, ttl time.Duration, trustedProxy bool) *SessionManager {
-	return &SessionManager{authDB: authDB, ttl: ttl, trustedProxy: trustedProxy}
+func NewSessionCookie(authDB *db.AuthDB, ttl time.Duration, trustedProxy bool) *SessionCookie {
+	return &SessionCookie{authDB: authDB, ttl: ttl, trustedProxy: trustedProxy}
 }
 
-func (sm *SessionManager) CreateSession(w http.ResponseWriter, r *http.Request, userID int64) error {
-	token, err := sm.authDB.CreateSession(userID, sm.ttl)
+func (sc *SessionCookie) Set(w http.ResponseWriter, r *http.Request, userID int64) error {
+	token, err := sc.authDB.CreateSession(userID, sc.ttl)
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
 
-	secure := sm.IsSecure(r)
+	secure := sc.IsSecure(r)
 	encoded := base64.RawURLEncoding.EncodeToString(token)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
@@ -37,11 +37,11 @@ func (sm *SessionManager) CreateSession(w http.ResponseWriter, r *http.Request, 
 		HttpOnly: true,
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(sm.ttl.Seconds()),
+		MaxAge:   int(sc.ttl.Seconds()),
 	})
 
-	csrf := make([]byte, 16)
-	if _, err := rand.Read(csrf); err == nil {
+	csrf := generateCSRFToken()
+	if csrf != nil {
 		http.SetCookie(w, &http.Cookie{
 			Name:     "csrf_token",
 			Value:    base64.RawURLEncoding.EncodeToString(csrf),
@@ -49,13 +49,13 @@ func (sm *SessionManager) CreateSession(w http.ResponseWriter, r *http.Request, 
 			HttpOnly: false,
 			Secure:   secure,
 			SameSite: http.SameSiteLaxMode,
-			MaxAge:   int(sm.ttl.Seconds()),
+			MaxAge:   int(sc.ttl.Seconds()),
 		})
 	}
 	return nil
 }
 
-func (sm *SessionManager) GetUserFromRequest(r *http.Request) (*db.User, error) {
+func (sc *SessionCookie) Get(r *http.Request) (*db.User, error) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
 		return nil, nil
@@ -66,23 +66,23 @@ func (sm *SessionManager) GetUserFromRequest(r *http.Request) (*db.User, error) 
 		return nil, nil
 	}
 
-	user, err := sm.authDB.ValidateSessionToken(token)
+	user, err := sc.authDB.ValidateSessionToken(token)
 	if err != nil {
 		return nil, nil
 	}
 	return user, nil
 }
 
-func (sm *SessionManager) DestroySession(w http.ResponseWriter, r *http.Request) error {
+func (sc *SessionCookie) Clear(w http.ResponseWriter, r *http.Request) error {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err == nil {
 		token, decErr := base64.RawURLEncoding.DecodeString(cookie.Value)
 		if decErr == nil {
-			_ = sm.authDB.DeleteSession(token)
+			_ = sc.authDB.DeleteSession(token)
 		}
 	}
 
-	secure := sm.IsSecure(r)
+	secure := sc.IsSecure(r)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
@@ -104,12 +104,66 @@ func (sm *SessionManager) DestroySession(w http.ResponseWriter, r *http.Request)
 	return nil
 }
 
-func (sm *SessionManager) IsSecure(r *http.Request) bool {
+func ValidateCSRFToken(r *http.Request, formValue string) bool {
+	cookie, err := r.Cookie("csrf_token")
+	if err != nil || cookie.Value == "" {
+		return false
+	}
+	return cookie.Value == formValue
+}
+
+func (sc *SessionCookie) EnsureCSRF(w http.ResponseWriter, r *http.Request) {
+	if _, err := r.Cookie("csrf_token"); err == nil {
+		return
+	}
+
+	csrf := generateCSRFToken()
+	if csrf == nil {
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     "csrf_token",
+		Value:    base64.RawURLEncoding.EncodeToString(csrf),
+		Path:     "/",
+		HttpOnly: false,
+		Secure:   sc.IsSecure(r),
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func (sc *SessionCookie) IsSecure(r *http.Request) bool {
 	if r.TLS != nil {
 		return true
 	}
-	if sm.trustedProxy && r.Header.Get("X-Forwarded-Proto") == "https" {
+	if sc.trustedProxy && r.Header.Get("X-Forwarded-Proto") == "https" {
 		return true
 	}
 	return false
+}
+
+func EnsureCSRFCookie(w http.ResponseWriter, r *http.Request, secure bool) {
+	if _, err := r.Cookie("csrf_token"); err == nil {
+		return
+	}
+
+	csrf := generateCSRFToken()
+	if csrf == nil {
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     "csrf_token",
+		Value:    base64.RawURLEncoding.EncodeToString(csrf),
+		Path:     "/",
+		HttpOnly: false,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func generateCSRFToken() []byte {
+	csrf := make([]byte, 16)
+	if _, err := rand.Read(csrf); err != nil {
+		return nil
+	}
+	return csrf
 }

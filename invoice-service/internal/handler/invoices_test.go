@@ -22,7 +22,7 @@ func TestInvoicesPageReturns200(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.invoicesPage(w, req)
+	ta.ih.invoicesPage(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -47,7 +47,7 @@ func TestGenerateInvoiceSuccess(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.generateInvoice(w, req)
+	ta.ih.generateInvoice(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
@@ -71,7 +71,7 @@ func TestGenerateInvoiceFailsWhenUnrated(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.generateInvoice(w, req)
+	ta.ih.generateInvoice(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
@@ -96,7 +96,7 @@ func TestInvoicePreviewReturns200(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.invoicePreview(w, req)
+	ta.ih.invoicePreview(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -114,7 +114,7 @@ func TestInvoicePreview404(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.invoicePreview(w, req)
+	ta.ih.invoicePreview(w, req)
 
 	resp := w.Result()
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
