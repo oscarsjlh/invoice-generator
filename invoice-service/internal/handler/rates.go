@@ -6,7 +6,24 @@ import (
 	"strings"
 )
 
-func (a *App) ratesPage(w http.ResponseWriter, r *http.Request) {
+type RateHandlers struct {
+	renderer *Renderer
+}
+
+func NewRateHandlers(renderer *Renderer) *RateHandlers {
+	return &RateHandlers{renderer: renderer}
+}
+
+func (h *RateHandlers) Routes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /rates", h.ratesPage)
+	mux.HandleFunc("GET /rates/table", h.ratesTable)
+	mux.HandleFunc("POST /rates", h.createRate)
+	mux.HandleFunc("POST /rates/{id}/delete", h.deleteRate)
+	mux.HandleFunc("GET /rates/{id}/edit", h.editRateForm)
+	mux.HandleFunc("POST /rates/{id}", h.updateRate)
+}
+
+func (h *RateHandlers) ratesPage(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	rates, err := store.ListRates()
 	if err != nil {
@@ -14,13 +31,13 @@ func (a *App) ratesPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.renderPage(w, r, http.StatusOK, "rates.html", RatesPageData{
+	h.renderer.Page(w, r, http.StatusOK, "rates.html", RatesPageData{
 		Rates:  rates,
 		Notice: noticeFromRequest(r),
 	}, "rates_table.html")
 }
 
-func (a *App) createRate(w http.ResponseWriter, r *http.Request) {
+func (h *RateHandlers) createRate(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
@@ -66,10 +83,10 @@ func (a *App) createRate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.redirect(w, r, "/rates", "Rate added")
+	redirect(w, r, "/rates", "Rate added")
 }
 
-func (a *App) deleteRate(w http.ResponseWriter, r *http.Request) {
+func (h *RateHandlers) deleteRate(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
@@ -83,7 +100,7 @@ func (a *App) deleteRate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !isHTMX(r) {
-		a.redirect(w, r, "/rates", "Rate deleted")
+		redirect(w, r, "/rates", "Rate deleted")
 		return
 	}
 
@@ -93,10 +110,10 @@ func (a *App) deleteRate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.renderPartial(w, http.StatusOK, "rates_table", RatesPageData{Rates: rates, Notice: fmt.Sprintf("Rate %d deleted", id)}, "rates_table.html")
+	h.renderer.Partial(w, http.StatusOK, "rates_table", RatesPageData{Rates: rates, Notice: fmt.Sprintf("Rate %d deleted", id)}, "rates_table.html")
 }
 
-func (a *App) editRateForm(w http.ResponseWriter, r *http.Request) {
+func (h *RateHandlers) editRateForm(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
@@ -109,10 +126,10 @@ func (a *App) editRateForm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.renderPartial(w, http.StatusOK, "rate_edit_row", rate, "rate_edit_row.html")
+	h.renderer.Partial(w, http.StatusOK, "rate_edit_row", rate, "rate_edit_row.html")
 }
 
-func (a *App) updateRate(w http.ResponseWriter, r *http.Request) {
+func (h *RateHandlers) updateRate(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
@@ -171,10 +188,10 @@ func (a *App) updateRate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.renderPartial(w, http.StatusOK, "rates_table", RatesPageData{Rates: rates, Notice: fmt.Sprintf("Rate %d updated", id)}, "rates_table.html")
+	h.renderer.Partial(w, http.StatusOK, "rates_table", RatesPageData{Rates: rates, Notice: fmt.Sprintf("Rate %d updated", id)}, "rates_table.html")
 }
 
-func (a *App) ratesTable(w http.ResponseWriter, r *http.Request) {
+func (h *RateHandlers) ratesTable(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	rates, err := store.ListRates()
 	if err != nil {
@@ -182,5 +199,5 @@ func (a *App) ratesTable(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.renderPartial(w, http.StatusOK, "rates_table", RatesPageData{Rates: rates}, "rates_table.html")
+	h.renderer.Partial(w, http.StatusOK, "rates_table", RatesPageData{Rates: rates}, "rates_table.html")
 }

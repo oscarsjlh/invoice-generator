@@ -2,6 +2,8 @@ package handler
 
 import (
 	"net/http"
+
+	"invoice-app/internal/auth"
 )
 
 func CSRFMiddleware() func(http.Handler) http.Handler {
@@ -21,14 +23,8 @@ func CSRFMiddlewareWithPublic(publicPath func(string) bool) func(http.Handler) h
 				return
 			}
 
-			expected, err := r.Cookie("csrf_token")
-			if err != nil || expected.Value == "" {
-				http.Error(w, "invalid request", http.StatusBadRequest)
-				return
-			}
-
 			provided := extractCSRFToken(r)
-			if provided == "" || provided != expected.Value {
+			if provided == "" || !auth.ValidateCSRFToken(r, provided) {
 				http.Error(w, "invalid request", http.StatusBadRequest)
 				return
 			}

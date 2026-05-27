@@ -122,17 +122,17 @@ func TestFinishLoginInvalidSession(t *testing.T) {
 	assert.Contains(t, err.Error(), "no login session found")
 }
 
-func TestSessionManagerCreateAndDestroy(t *testing.T) {
+func TestSessionCookieCreateAndClear(t *testing.T) {
 	t.Parallel()
 	adb := testutil.NewTestAuthDB(t)
-	sm := NewSessionManager(adb, 1*time.Hour, false)
+	sc := NewSessionCookie(adb, 1*time.Hour, false)
 
 	id, _ := adb.CreateUser("sessionuser", "Session User")
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/", nil)
 
-	err := sm.CreateSession(w, req, id)
+	err := sc.Set(w, req, id)
 	require.NoError(t, err)
 
 	cookies := w.Result().Cookies()
@@ -153,7 +153,7 @@ func TestSessionManagerCreateAndDestroy(t *testing.T) {
 	assert.NotEmpty(t, sessionCookie.Value)
 
 	w2 := httptest.NewRecorder()
-	err = sm.DestroySession(w2, req)
+	err = sc.Clear(w2, req)
 	require.NoError(t, err)
 
 	cookies2 := w2.Result().Cookies()
@@ -164,69 +164,69 @@ func TestSessionManagerCreateAndDestroy(t *testing.T) {
 	}
 }
 
-func TestSessionManagerGetUserFromRequestNoCookie(t *testing.T) {
+func TestSessionCookieGetNoCookie(t *testing.T) {
 	t.Parallel()
 	adb := testutil.NewTestAuthDB(t)
-	sm := NewSessionManager(adb, 1*time.Hour, false)
+	sc := NewSessionCookie(adb, 1*time.Hour, false)
 
 	req := httptest.NewRequest("GET", "/", nil)
-	user, err := sm.GetUserFromRequest(req)
+	user, err := sc.Get(req)
 	require.NoError(t, err)
 	assert.Nil(t, user)
 }
 
-func TestSessionManagerGetUserFromRequestInvalidToken(t *testing.T) {
+func TestSessionCookieGetInvalidToken(t *testing.T) {
 	t.Parallel()
 	adb := testutil.NewTestAuthDB(t)
-	sm := NewSessionManager(adb, 1*time.Hour, false)
+	sc := NewSessionCookie(adb, 1*time.Hour, false)
 
 	req := httptest.NewRequest("GET", "/", nil)
 	req.AddCookie(&http.Cookie{
 		Name:  "invoice_session",
 		Value: "invalid-base64!!!",
 	})
-	user, err := sm.GetUserFromRequest(req)
+	user, err := sc.Get(req)
 	require.NoError(t, err)
 	assert.Nil(t, user)
 }
 
-func TestSessionManagerGetUserFromRequestUnknownToken(t *testing.T) {
+func TestSessionCookieGetUnknownToken(t *testing.T) {
 	t.Parallel()
 	adb := testutil.NewTestAuthDB(t)
-	sm := NewSessionManager(adb, 1*time.Hour, false)
+	sc := NewSessionCookie(adb, 1*time.Hour, false)
 
 	req := httptest.NewRequest("GET", "/", nil)
 	req.AddCookie(&http.Cookie{
 		Name:  "invoice_session",
 		Value: "dGVzdF90b2tlbl92YWx1ZV8xMjM0NQ", // valid base64 but unknown token
 	})
-	user, err := sm.GetUserFromRequest(req)
+	user, err := sc.Get(req)
 	require.NoError(t, err)
 	assert.Nil(t, user)
 }
 
-func TestSessionManagerIsSecure(t *testing.T) {
+func TestSessionCookieIsSecure(t *testing.T) {
 	t.Parallel()
 	adb := testutil.NewTestAuthDB(t)
 
 	t.Run("non-TLS without proxy", func(t *testing.T) {
-		sm := NewSessionManager(adb, 1*time.Hour, false)
+		sc := NewSessionCookie(adb, 1*time.Hour, false)
 		req := httptest.NewRequest("GET", "/", nil)
-		assert.False(t, sm.IsSecure(req))
+		assert.False(t, sc.IsSecure(req))
 	})
 
 	t.Run("TLS connection", func(t *testing.T) {
-		sm := NewSessionManager(adb, 1*time.Hour, false)
+		sc := NewSessionCookie(adb, 1*time.Hour, false)
 		req := httptest.NewRequest("GET", "/", nil)
 		req.TLS = &tls.ConnectionState{}
-		assert.True(t, sm.IsSecure(req))
+		assert.True(t, sc.IsSecure(req))
 	})
 
 	t.Run("trusted proxy with X-Forwarded-Proto", func(t *testing.T) {
-		sm := NewSessionManager(adb, 1*time.Hour, true)
+		sc := NewSessionCookie(adb, 1*time.Hour, true)
 		req := httptest.NewRequest("GET", "/", nil)
 		req.Header.Set("X-Forwarded-Proto", "https")
-		assert.True(t, sm.IsSecure(req))
+		assert.True(t, sc.IsSecure(req))
 	})
 }
 

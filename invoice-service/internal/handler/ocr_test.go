@@ -24,7 +24,7 @@ func TestOCRUploadPageWhenDisabled(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.ocrUploadPage(w, req)
+	ta.oh.ocrUploadPage(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Result().StatusCode)
 }
@@ -43,13 +43,14 @@ func TestOCRUploadPageWhenEnabled(t *testing.T) {
 	multiStore.SetLegacyStore(store)
 	app := New(multiStore, nil, nil, nil, cfg, logger)
 	app.SetLegacyStore(store)
+	oh := NewOCRHandlers(app.renderer, app.ocrJobs, cfg)
 
 	req := httptest.NewRequest("GET", "/ocr/import", nil)
 	ctx := WithTestStore(req.Context(), store)
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	app.ocrUploadPage(w, req)
+	oh.ocrUploadPage(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Result().StatusCode)
 	body, _ := io.ReadAll(w.Result().Body)
@@ -60,6 +61,7 @@ func TestOCRSessionStatusHandler(t *testing.T) {
 	t.Parallel()
 	ta := newTestAppWithAuth(t)
 	ta.app.cfg.OCREnabled = true
+	ta.oh = NewOCRHandlers(ta.app.renderer, ta.app.ocrJobs, ta.app.cfg)
 
 	store := ta.store
 	sessionID, err := store.CreateOCRSession()
@@ -73,7 +75,7 @@ func TestOCRSessionStatusHandler(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.ocrSessionStatus(w, req)
+	ta.oh.ocrSessionStatus(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Result().StatusCode)
 	body, _ := io.ReadAll(w.Result().Body)
@@ -84,6 +86,7 @@ func TestOCRSessionStatusIncludesDraftCategories(t *testing.T) {
 	t.Parallel()
 	ta := newTestAppWithAuth(t)
 	ta.app.cfg.OCREnabled = true
+	ta.oh = NewOCRHandlers(ta.app.renderer, ta.app.ocrJobs, ta.app.cfg)
 
 	store := ta.store
 	sessionID, err := store.CreateOCRSession()
@@ -106,7 +109,7 @@ func TestOCRSessionStatusIncludesDraftCategories(t *testing.T) {
 	req = req.WithContext(WithTestStore(req.Context(), ta.store))
 	w := httptest.NewRecorder()
 
-	ta.app.ocrSessionStatus(w, req)
+	ta.oh.ocrSessionStatus(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Result().StatusCode)
 	body, _ := io.ReadAll(w.Result().Body)
@@ -117,6 +120,7 @@ func TestOCRDeleteSessionHandler(t *testing.T) {
 	t.Parallel()
 	ta := newTestAppWithAuth(t)
 	ta.app.cfg.OCREnabled = true
+	ta.oh = NewOCRHandlers(ta.app.renderer, ta.app.ocrJobs, ta.app.cfg)
 
 	store := ta.store
 	sessionID, err := store.CreateOCRSession()
@@ -129,6 +133,6 @@ func TestOCRDeleteSessionHandler(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	ta.app.ocrDeleteSession(w, req)
+	ta.oh.ocrDeleteSession(w, req)
 	assert.Equal(t, http.StatusSeeOther, w.Result().StatusCode)
 }

@@ -6,7 +6,24 @@ import (
 	"strings"
 )
 
-func (a *App) entriesPage(w http.ResponseWriter, r *http.Request) {
+type EntryHandlers struct {
+	renderer *Renderer
+}
+
+func NewEntryHandlers(renderer *Renderer) *EntryHandlers {
+	return &EntryHandlers{renderer: renderer}
+}
+
+func (h *EntryHandlers) Routes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /entries", h.entriesPage)
+	mux.HandleFunc("GET /entries/table", h.entriesTable)
+	mux.HandleFunc("POST /entries", h.createEntry)
+	mux.HandleFunc("GET /entries/{id}/edit", h.editEntryForm)
+	mux.HandleFunc("POST /entries/{id}", h.updateEntry)
+	mux.HandleFunc("POST /entries/{id}/delete", h.deleteEntry)
+}
+
+func (h *EntryHandlers) entriesPage(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	entries, err := store.ListEntries()
 	if err != nil {
@@ -20,14 +37,14 @@ func (a *App) entriesPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.renderPage(w, r, http.StatusOK, "entries.html", EntriesPageData{
+	h.renderer.Page(w, r, http.StatusOK, "entries.html", EntriesPageData{
 		Entries:    entries,
 		Categories: categories,
 		Notice:     noticeFromRequest(r),
 	}, "entries_table.html")
 }
 
-func (a *App) createEntry(w http.ResponseWriter, r *http.Request) {
+func (h *EntryHandlers) createEntry(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
@@ -59,10 +76,10 @@ func (a *App) createEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	LoggerFromContext(r.Context()).Info("entry created", "date", date, "category", category)
-	a.redirect(w, r, "/entries", "Entry added")
+	redirect(w, r, "/entries", "Entry added")
 }
 
-func (a *App) editEntryForm(w http.ResponseWriter, r *http.Request) {
+func (h *EntryHandlers) editEntryForm(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
@@ -75,10 +92,10 @@ func (a *App) editEntryForm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.renderPartial(w, http.StatusOK, "entry_edit_row", entry, "entry_edit_row.html")
+	h.renderer.Partial(w, http.StatusOK, "entry_edit_row", entry, "entry_edit_row.html")
 }
 
-func (a *App) updateEntry(w http.ResponseWriter, r *http.Request) {
+func (h *EntryHandlers) updateEntry(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
@@ -119,10 +136,10 @@ func (a *App) updateEntry(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.renderPartial(w, http.StatusOK, "entries_table", EntriesPageData{Entries: entries, Notice: fmt.Sprintf("Entry %d updated", id)}, "entries_table.html")
+	h.renderer.Partial(w, http.StatusOK, "entries_table", EntriesPageData{Entries: entries, Notice: fmt.Sprintf("Entry %d updated", id)}, "entries_table.html")
 }
 
-func (a *App) entriesTable(w http.ResponseWriter, r *http.Request) {
+func (h *EntryHandlers) entriesTable(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	entries, err := store.ListEntries()
 	if err != nil {
@@ -130,10 +147,10 @@ func (a *App) entriesTable(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.renderPartial(w, http.StatusOK, "entries_table", EntriesPageData{Entries: entries}, "entries_table.html")
+	h.renderer.Partial(w, http.StatusOK, "entries_table", EntriesPageData{Entries: entries}, "entries_table.html")
 }
 
-func (a *App) deleteEntry(w http.ResponseWriter, r *http.Request) {
+func (h *EntryHandlers) deleteEntry(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
@@ -147,7 +164,7 @@ func (a *App) deleteEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !isHTMX(r) {
-		a.redirect(w, r, "/entries", "Entry deleted")
+		redirect(w, r, "/entries", "Entry deleted")
 		return
 	}
 
@@ -157,5 +174,5 @@ func (a *App) deleteEntry(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.renderPartial(w, http.StatusOK, "entries_table", EntriesPageData{Entries: entries, Notice: fmt.Sprintf("Entry %d deleted", id)}, "entries_table.html")
+	h.renderer.Partial(w, http.StatusOK, "entries_table", EntriesPageData{Entries: entries, Notice: fmt.Sprintf("Entry %d deleted", id)}, "entries_table.html")
 }

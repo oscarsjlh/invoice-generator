@@ -39,7 +39,7 @@ func (a *App) dashboard(w http.ResponseWriter, r *http.Request) {
 		invoices = invoices[:8]
 	}
 
-	a.renderPage(w, r, http.StatusOK, "dashboard.html", DashboardPageData{
+	a.renderer.Page(w, r, http.StatusOK, "dashboard.html", DashboardPageData{
 		Summary:        summary,
 		RecentInvoices: invoices,
 		Years:          years,

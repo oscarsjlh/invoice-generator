@@ -34,7 +34,7 @@ func main() {
 
 	var authDB *db.AuthDB
 	var webAuthn *auth.WebAuthnManager
-	var sessionManager *auth.SessionManager
+	var sessionCookie *auth.SessionCookie
 
 	if cfg.AuthEnabled {
 		var err error
@@ -65,7 +65,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		sessionManager = auth.NewSessionManager(authDB, cfg.SessionTTL, cfg.TrustedProxy)
+		sessionCookie = auth.NewSessionCookie(authDB, cfg.SessionTTL, cfg.TrustedProxy)
 	}
 
 	multiStore := db.NewMultiStore(cfg.UserDBDir, cfg.MigrationsDir)
@@ -85,7 +85,7 @@ func main() {
 		multiStore.SetLegacyStore(legacyStore)
 	}
 
-	app := handler.New(multiStore, authDB, webAuthn, sessionManager, cfg, logger)
+	app := handler.New(multiStore, authDB, webAuthn, sessionCookie, cfg, logger)
 
 	if !cfg.AuthEnabled {
 		app.SetLegacyStore(legacyStore)

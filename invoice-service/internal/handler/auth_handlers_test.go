@@ -42,14 +42,22 @@ func newTestAppWithAuth(t *testing.T) *testAppWithAuth {
 	})
 	require.NoError(t, err)
 
-	sm := auth.NewSessionManager(adb, 24*time.Hour, false)
-	app := New(multiStore, adb, wm, sm, cfg, logger)
+	sc := auth.NewSessionCookie(adb, 24*time.Hour, false)
+	app := New(multiStore, adb, wm, sc, cfg, logger)
+
+	ah := NewAuthHandlers(wm, sc, app.renderer, app.authLimiter, cfg.AuthEnabled, cfg.RegistrationEnabled)
 
 	return &testAppWithAuth{
 		app:   app,
 		adb:   adb,
 		store: store,
-		sm:    sm,
+		sc:    sc,
+		ah:    ah,
+		eh:    NewEntryHandlers(app.renderer),
+		rh:    NewRateHandlers(app.renderer),
+		ih:    NewInvoiceHandlers(app.renderer, cfg),
+		sh:    NewSettingsHandlers(app.renderer),
+		oh:    NewOCRHandlers(app.renderer, app.ocrJobs, cfg),
 	}
 }
 
@@ -57,7 +65,13 @@ type testAppWithAuth struct {
 	app   *App
 	adb   *db.AuthDB
 	store *db.Store
-	sm    *auth.SessionManager
+	sc    *auth.SessionCookie
+	ah    *AuthHandlers
+	eh    *EntryHandlers
+	rh    *RateHandlers
+	ih    *InvoiceHandlers
+	sh    *SettingsHandlers
+	oh    *OCRHandlers
 }
 
 func TestLoginPageRedirectsIfAlreadyLoggedIn(t *testing.T) {
@@ -67,7 +81,7 @@ func TestLoginPageRedirectsIfAlreadyLoggedIn(t *testing.T) {
 	id, _ := ta.adb.CreateUser("alice", "Alice")
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/login", nil)
-	require.NoError(t, ta.sm.CreateSession(w, req, id))
+	require.NoError(t, ta.sc.Set(w, req, id))
 	w.Flush()
 
 	req2 := httptest.NewRequest("GET", "/login", nil)
@@ -75,7 +89,7 @@ func TestLoginPageRedirectsIfAlreadyLoggedIn(t *testing.T) {
 		req2.AddCookie(c)
 	}
 	w2 := httptest.NewRecorder()
-	ta.app.loginPage(w2, req2)
+	ta.ah.loginPage(w2, req2)
 	assert.Equal(t, http.StatusSeeOther, w2.Result().StatusCode)
 }
 
@@ -85,7 +99,7 @@ func TestLoginPageRendersForm(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/login", nil)
 	w := httptest.NewRecorder()
-	ta.app.loginPage(w, req)
+	ta.ah.loginPage(w, req)
 	assert.Equal(t, http.StatusOK, w.Result().StatusCode)
 	body, _ := io.ReadAll(w.Result().Body)
 	assert.Contains(t, string(body), "login")
@@ -99,7 +113,7 @@ func TestLoginPageHidesRegisterLinkWhenRegistrationDisabled(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/login", nil)
 	w := httptest.NewRecorder()
-	ta.app.loginPage(w, req)
+	ta.ah.loginPage(w, req)
 	assert.Equal(t, http.StatusOK, w.Result().StatusCode)
 	body, _ := io.ReadAll(w.Result().Body)
 	assert.NotContains(t, string(body), "Create one")
@@ -113,7 +127,7 @@ func TestRegisterPageRedirectsIfAlreadyLoggedIn(t *testing.T) {
 	id, _ := ta.adb.CreateUser("bob", "Bob")
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/register", nil)
-	require.NoError(t, ta.sm.CreateSession(w, req, id))
+	require.NoError(t, ta.sc.Set(w, req, id))
 	w.Flush()
 
 	req2 := httptest.NewRequest("GET", "/register", nil)
@@ -121,7 +135,7 @@ func TestRegisterPageRedirectsIfAlreadyLoggedIn(t *testing.T) {
 		req2.AddCookie(c)
 	}
 	w2 := httptest.NewRecorder()
-	ta.app.registerPage(w2, req2)
+	ta.ah.registerPage(w2, req2)
 	assert.Equal(t, http.StatusSeeOther, w2.Result().StatusCode)
 }
 
@@ -131,7 +145,7 @@ func TestRegisterPageRendersForm(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/register", nil)
 	w := httptest.NewRecorder()
-	ta.app.registerPage(w, req)
+	ta.ah.registerPage(w, req)
 	assert.Equal(t, http.StatusOK, w.Result().StatusCode)
 	body, _ := io.ReadAll(w.Result().Body)
 	assert.Contains(t, string(body), "register")
@@ -144,7 +158,7 @@ func TestRegisterPageDisabledReturns404(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/register", nil)
 	w := httptest.NewRecorder()
-	ta.app.registerPage(w, req)
+	ta.app.Routes().ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNotFound, w.Result().StatusCode)
 }
 
@@ -178,7 +192,7 @@ func TestBeginRegistrationSuccess(t *testing.T) {
 	body := bytes.NewReader([]byte(`{"username":"eve","displayName":"Eve"}`))
 	req := httptest.NewRequest("POST", "/api/register/begin", body)
 	w := httptest.NewRecorder()
-	ta.app.beginRegistration(w, req)
+	ta.ah.beginRegistration(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Result().StatusCode)
 	var resp map[string]any
@@ -194,7 +208,7 @@ func TestBeginRegistrationInvalidUsername(t *testing.T) {
 	body := bytes.NewReader([]byte(`{"username":"no spaces"}`))
 	req := httptest.NewRequest("POST", "/api/register/begin", body)
 	w := httptest.NewRecorder()
-	ta.app.beginRegistration(w, req)
+	ta.ah.beginRegistration(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 	var resp map[string]string
@@ -210,7 +224,7 @@ func TestBeginRegistrationNormalizesUsername(t *testing.T) {
 	body := bytes.NewReader([]byte(`{"username":"  Eve_User  ","displayName":"Ignored"}`))
 	req := httptest.NewRequest("POST", "/api/register/begin", body)
 	w := httptest.NewRecorder()
-	ta.app.beginRegistration(w, req)
+	ta.ah.beginRegistration(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Result().StatusCode)
 	existing, err := ta.adb.GetUserByUsernameFold("eve_user")
@@ -222,11 +236,12 @@ func TestBeginRegistrationDisabledReturns404(t *testing.T) {
 	t.Parallel()
 	ta := newTestAppWithAuth(t)
 	ta.app.cfg.RegistrationEnabled = false
+	ta.ah = NewAuthHandlers(ta.app.webAuthn, ta.sc, ta.app.renderer, ta.app.authLimiter, ta.app.cfg.AuthEnabled, ta.app.cfg.RegistrationEnabled)
 
 	body := bytes.NewReader([]byte(`{"username":"eve"}`))
 	req := httptest.NewRequest("POST", "/api/register/begin", body)
 	w := httptest.NewRecorder()
-	ta.app.beginRegistration(w, req)
+	ta.ah.beginRegistration(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Result().StatusCode)
 }
@@ -241,7 +256,7 @@ func TestBeginRegistrationDuplicate(t *testing.T) {
 	body := bytes.NewReader([]byte(`{"username":"frank","displayName":"Frank Dup"}`))
 	req := httptest.NewRequest("POST", "/api/register/begin", body)
 	w := httptest.NewRecorder()
-	ta.app.beginRegistration(w, req)
+	ta.ah.beginRegistration(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 }
@@ -256,7 +271,7 @@ func TestBeginLoginNoCredentials(t *testing.T) {
 	body := bytes.NewReader([]byte(`{"username":"grace"}`))
 	req := httptest.NewRequest("POST", "/api/login/begin", body)
 	w := httptest.NewRecorder()
-	ta.app.beginLogin(w, req)
+	ta.ah.beginLogin(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 }
@@ -268,7 +283,7 @@ func TestBeginLoginUserNotFound(t *testing.T) {
 	body := bytes.NewReader([]byte(`{"username":"nobody"}`))
 	req := httptest.NewRequest("POST", "/api/login/begin", body)
 	w := httptest.NewRecorder()
-	ta.app.beginLogin(w, req)
+	ta.ah.beginLogin(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 }
@@ -280,7 +295,7 @@ func TestBeginLoginInvalidUsername(t *testing.T) {
 	body := bytes.NewReader([]byte(`{"username":"bad username"}`))
 	req := httptest.NewRequest("POST", "/api/login/begin", body)
 	w := httptest.NewRecorder()
-	ta.app.beginLogin(w, req)
+	ta.ah.beginLogin(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 	var resp map[string]string
@@ -295,7 +310,7 @@ func TestFinishRegistrationInvalidSession(t *testing.T) {
 	body := bytes.NewReader([]byte(`{"session_id":"nonexistent"}`))
 	req := httptest.NewRequest("POST", "/api/register/finish", body)
 	w := httptest.NewRecorder()
-	ta.app.finishRegistration(w, req)
+	ta.ah.finishRegistration(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 }
@@ -304,11 +319,12 @@ func TestFinishRegistrationDisabledReturns404(t *testing.T) {
 	t.Parallel()
 	ta := newTestAppWithAuth(t)
 	ta.app.cfg.RegistrationEnabled = false
+	ta.ah = NewAuthHandlers(ta.app.webAuthn, ta.sc, ta.app.renderer, ta.app.authLimiter, ta.app.cfg.AuthEnabled, ta.app.cfg.RegistrationEnabled)
 
 	body := bytes.NewReader([]byte(`{"session_id":"nonexistent"}`))
 	req := httptest.NewRequest("POST", "/api/register/finish", body)
 	w := httptest.NewRecorder()
-	ta.app.finishRegistration(w, req)
+	ta.ah.finishRegistration(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Result().StatusCode)
 }
@@ -320,7 +336,7 @@ func TestFinishLoginInvalidSession(t *testing.T) {
 	body := bytes.NewReader([]byte(`{"session_id":"nonexistent"}`))
 	req := httptest.NewRequest("POST", "/api/login/finish", body)
 	w := httptest.NewRecorder()
-	ta.app.finishLogin(w, req)
+	ta.ah.finishLogin(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 }
@@ -332,7 +348,7 @@ func TestLogoutRedirects(t *testing.T) {
 	id, _ := ta.adb.CreateUser("heidi", "Heidi")
 	sessW := httptest.NewRecorder()
 	sessReq := httptest.NewRequest("GET", "/", nil)
-	require.NoError(t, ta.sm.CreateSession(sessW, sessReq, id))
+	require.NoError(t, ta.sc.Set(sessW, sessReq, id))
 	sessW.Flush()
 
 	body := bytes.NewReader([]byte("csrf_token="))
@@ -347,20 +363,22 @@ func TestLogoutRedirects(t *testing.T) {
 		}
 	}
 	w := httptest.NewRecorder()
-	ta.app.logout(w, req)
+	ta.ah.logout(w, req)
 
 	assert.Equal(t, http.StatusSeeOther, w.Result().StatusCode)
 }
 
-func TestLogoutWithoutCSRFCookie(t *testing.T) {
+func TestLogoutCSRFRejectedByMiddleware(t *testing.T) {
 	t.Parallel()
 	ta := newTestAppWithAuth(t)
+
+	handler := CSRFMiddleware()(http.HandlerFunc(ta.ah.logout))
 
 	body := bytes.NewReader([]byte("csrf_token=someval"))
 	req := httptest.NewRequest("POST", "/logout", body)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
-	ta.app.logout(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 }
@@ -379,4 +397,38 @@ func TestAuthNoticeFromRequestIgnoresUnknownCodes(t *testing.T) {
 	notice, kind := authNoticeFromRequest(req)
 	assert.Empty(t, notice)
 	assert.Empty(t, kind)
+}
+
+func TestUsernamePolicyEndpoint(t *testing.T) {
+	t.Parallel()
+	ta := newTestAppWithAuth(t)
+
+	req := httptest.NewRequest("GET", "/auth/username-policy", nil)
+	w := httptest.NewRecorder()
+	ta.ah.usernamePolicyHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Result().StatusCode)
+	assert.Equal(t, "application/json", w.Result().Header.Get("Content-Type"))
+
+	var body map[string]string
+	require.NoError(t, json.NewDecoder(w.Result().Body).Decode(&body))
+	assert.Equal(t, auth.DefaultUsernamePolicy.Pattern, body["pattern"])
+	assert.Equal(t, auth.UsernameValidationMessage, body["message"])
+	assert.NotEmpty(t, body["normalization"])
+}
+
+func TestUsernamePolicyEndpointIsPublic(t *testing.T) {
+	t.Parallel()
+	ta := newTestAppWithAuth(t)
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := ta.app.authMiddleware(inner)
+
+	req := httptest.NewRequest("GET", "/auth/username-policy", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Result().StatusCode)
 }

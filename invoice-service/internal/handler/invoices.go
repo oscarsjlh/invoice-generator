@@ -8,10 +8,28 @@ import (
 	"net/url"
 	"time"
 
+	"invoice-app/internal/config"
 	"invoice-app/internal/invoicedelivery"
 )
 
-func (a *App) invoicesPage(w http.ResponseWriter, r *http.Request) {
+type InvoiceHandlers struct {
+	renderer *Renderer
+	cfg      config.Config
+}
+
+func NewInvoiceHandlers(renderer *Renderer, cfg config.Config) *InvoiceHandlers {
+	return &InvoiceHandlers{renderer: renderer, cfg: cfg}
+}
+
+func (h *InvoiceHandlers) Routes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /invoices", h.invoicesPage)
+	mux.HandleFunc("POST /invoices/generate", h.generateInvoice)
+	mux.HandleFunc("GET /invoices/{id}", h.invoicePreview)
+	mux.HandleFunc("GET /invoices/{id}/pdf", h.invoicePDF)
+	mux.HandleFunc("POST /invoices/{id}/send", h.sendInvoice)
+}
+
+func (h *InvoiceHandlers) invoicesPage(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	invoices, err := store.ListInvoices()
 	if err != nil {
@@ -32,7 +50,7 @@ func (a *App) invoicesPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
-	a.renderPage(w, r, http.StatusOK, "invoices.html", InvoicesPageData{
+	h.renderer.Page(w, r, http.StatusOK, "invoices.html", InvoicesPageData{
 		Invoices:           invoices,
 		Categories:         categories,
 		Notice:             noticeFromRequest(r),
@@ -43,7 +61,7 @@ func (a *App) invoicesPage(w http.ResponseWriter, r *http.Request) {
 	}, "invoice_list.html", "invoices.html")
 }
 
-func (a *App) generateInvoice(w http.ResponseWriter, r *http.Request) {
+func (h *InvoiceHandlers) generateInvoice(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
@@ -77,7 +95,7 @@ func (a *App) generateInvoice(w http.ResponseWriter, r *http.Request) {
 	invoiceID, err := store.GenerateInvoice(month, category, invoiceDate, dueDays, settings)
 	if err != nil {
 		LoggerFromContext(r.Context()).Warn("generate invoice", "month", month, "category", category, "error", err)
-		a.redirect(w, r, "/invoices", fmt.Sprintf("Could not generate invoice: %v", err))
+		redirect(w, r, "/invoices", fmt.Sprintf("Could not generate invoice: %v", err))
 		return
 	}
 
@@ -85,7 +103,7 @@ func (a *App) generateInvoice(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/invoices/%d?notice=%s", invoiceID, url.QueryEscape("Invoice created")), http.StatusSeeOther)
 }
 
-func (a *App) invoicePreview(w http.ResponseWriter, r *http.Request) {
+func (h *InvoiceHandlers) invoicePreview(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
@@ -102,13 +120,13 @@ func (a *App) invoicePreview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.renderPage(w, r, http.StatusOK, "invoice_preview_page.html", InvoicePreviewPageData{
+	h.renderer.Page(w, r, http.StatusOK, "invoice_preview_page.html", InvoicePreviewPageData{
 		Invoice: invoice,
 		Notice:  noticeFromRequest(r),
 	}, "invoice_preview_fragment.html", "invoice_preview_page.html")
 }
 
-func (a *App) invoicePDF(w http.ResponseWriter, r *http.Request) {
+func (h *InvoiceHandlers) invoicePDF(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
@@ -126,7 +144,7 @@ func (a *App) invoicePDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	delivery := invoicedelivery.New(store, a.cfg)
+	delivery := invoicedelivery.New(store, h.cfg)
 	result, err := delivery.RenderPDF(r.Context(), id)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("generate pdf", "invoice_id", id, "invoice_number", invoice.InvoiceNumber, "error", err)
@@ -140,7 +158,7 @@ func (a *App) invoicePDF(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(result.Data)
 }
 
-func (a *App) sendInvoice(w http.ResponseWriter, r *http.Request) {
+func (h *InvoiceHandlers) sendInvoice(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	id, err := parseInt64Path(r, "id")
 	if err != nil {
@@ -158,26 +176,26 @@ func (a *App) sendInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	delivery := invoicedelivery.New(store, a.cfg)
+	delivery := invoicedelivery.New(store, h.cfg)
 	result, err := delivery.Send(r.Context(), id)
 	if errors.Is(err, invoicedelivery.ErrCustomerEmailMissing) {
-		a.redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), "Customer email not configured — set it in Settings")
+		redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), "Customer email not configured — set it in Settings")
 		return
 	}
 	if errors.Is(err, invoicedelivery.ErrSMTPNotConfigured) {
-		a.redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), "SMTP not configured — set SMTP_HOST and SMTP_FROM environment variables")
+		redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), "SMTP not configured — set SMTP_HOST and SMTP_FROM environment variables")
 		return
 	}
 	if errors.Is(err, invoicedelivery.ErrRenderPDF) {
 		LoggerFromContext(r.Context()).Error("generate pdf for send", "invoice_id", id, "invoice_number", invoice.InvoiceNumber, "error", err)
-		a.redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), fmt.Sprintf("Generate PDF failed: %v", err))
+		redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), fmt.Sprintf("Generate PDF failed: %v", err))
 		return
 	}
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("send invoice email", "invoice_id", id, "invoice_number", invoice.InvoiceNumber, "error", err)
-		a.redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), fmt.Sprintf("Send failed: %v", err))
+		redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), fmt.Sprintf("Send failed: %v", err))
 		return
 	}
 
-	a.redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), fmt.Sprintf("Invoice sent to %s", result.Recipient))
+	redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), fmt.Sprintf("Invoice sent to %s", result.Recipient))
 }

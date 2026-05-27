@@ -10,38 +10,95 @@ import (
 
 	"invoice-app/internal/auth"
 
+	"invoice-app/internal/db"
+
 	"github.com/go-webauthn/webauthn/protocol"
 )
+
+type LoginPageData struct {
+	Notice     string
+	NoticeKind string
+	Next       string
+	User       *db.User
+}
+
+type RegisterPageData struct {
+	Notice     string
+	NoticeKind string
+	User       *db.User
+}
 
 const (
 	noticeSignInRequired = "signin_required"
 	noticeSignedOut      = "signed_out"
 )
 
-func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
-	user, _ := a.sessions.GetUserFromRequest(r)
+type AuthHandlers struct {
+	webAuthn           *auth.WebAuthnManager
+	sessionCookie      *auth.SessionCookie
+	renderer           *Renderer
+	authLimiter        *AuthRateLimiter
+	authEnabled        bool
+	registrationEnabled bool
+}
+
+func NewAuthHandlers(
+	webAuthn *auth.WebAuthnManager,
+	sessionCookie *auth.SessionCookie,
+	renderer *Renderer,
+	authLimiter *AuthRateLimiter,
+	authEnabled bool,
+	registrationEnabled bool,
+) *AuthHandlers {
+	return &AuthHandlers{
+		webAuthn:            webAuthn,
+		sessionCookie:       sessionCookie,
+		renderer:            renderer,
+		authLimiter:         authLimiter,
+		authEnabled:         authEnabled,
+		registrationEnabled: registrationEnabled,
+	}
+}
+
+func (h *AuthHandlers) Routes(mux *http.ServeMux) {
+	if h.authEnabled {
+		mux.HandleFunc("GET /login", h.loginPage)
+		mux.HandleFunc("GET /auth/username-policy", h.usernamePolicyHandler)
+		mux.Handle("POST /login/begin", h.authLimiter.Middleware(authLimitLoginBegin)(http.HandlerFunc(h.beginLogin)))
+		mux.Handle("POST /login/finish", h.authLimiter.Middleware(authLimitLoginFinish)(http.HandlerFunc(h.finishLogin)))
+		if h.registrationEnabled {
+			mux.HandleFunc("GET /register", h.registerPage)
+			mux.Handle("POST /register/begin", h.authLimiter.Middleware(authLimitRegisterBegin)(http.HandlerFunc(h.beginRegistration)))
+			mux.Handle("POST /register/finish", h.authLimiter.Middleware(authLimitRegisterFinish)(http.HandlerFunc(h.finishRegistration)))
+		}
+		mux.HandleFunc("POST /logout", h.logout)
+	}
+}
+
+func (h *AuthHandlers) loginPage(w http.ResponseWriter, r *http.Request) {
+	user, _ := h.sessionCookie.Get(r)
 	if user != nil {
-		a.redirect(w, r, "/", "")
+		redirect(w, r, "/", "")
 		return
 	}
 	notice, kind := authNoticeFromRequest(r)
 	data := LoginPageData{Notice: notice, NoticeKind: kind, Next: safeNextFromRequest(r)}
-	a.renderPage(w, r, http.StatusOK, "login.html", data)
+	h.renderer.Page(w, r, http.StatusOK, "login.html", data)
 }
 
-func (a *App) registerPage(w http.ResponseWriter, r *http.Request) {
-	if !a.cfg.RegistrationEnabled {
+func (h *AuthHandlers) registerPage(w http.ResponseWriter, r *http.Request) {
+	if !h.registrationEnabled {
 		http.NotFound(w, r)
 		return
 	}
-	user, _ := a.sessions.GetUserFromRequest(r)
+	user, _ := h.sessionCookie.Get(r)
 	if user != nil {
-		a.redirect(w, r, "/", "")
+		redirect(w, r, "/", "")
 		return
 	}
 	notice, kind := authNoticeFromRequest(r)
 	data := RegisterPageData{Notice: notice, NoticeKind: kind}
-	a.renderPage(w, r, http.StatusOK, "register.html", data)
+	h.renderer.Page(w, r, http.StatusOK, "register.html", data)
 }
 
 type beginRegisterRequest struct {
@@ -49,8 +106,8 @@ type beginRegisterRequest struct {
 	DisplayName string `json:"displayName"`
 }
 
-func (a *App) beginRegistration(w http.ResponseWriter, r *http.Request) {
-	if !a.cfg.RegistrationEnabled {
+func (h *AuthHandlers) beginRegistration(w http.ResponseWriter, r *http.Request) {
+	if !h.registrationEnabled {
 		http.NotFound(w, r)
 		return
 	}
@@ -67,10 +124,9 @@ func (a *App) beginRegistration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sid, options, err := a.webAuthn.BeginRegistration(req.Username, req.DisplayName)
+	sid, options, err := h.webAuthn.BeginRegistration(req.Username, req.DisplayName)
 	if err != nil {
 		logger.Warn("begin_registration_failed", "event", "begin_registration_failed", "component", "auth", "operation", "begin_registration", "username_hash", RedactEmail(req.Username), "error", err)
-		// avoid leaking details to client
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "registration failed"})
 		return
 	}
@@ -81,8 +137,8 @@ func (a *App) beginRegistration(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (a *App) finishRegistration(w http.ResponseWriter, r *http.Request) {
-	if !a.cfg.RegistrationEnabled {
+func (h *AuthHandlers) finishRegistration(w http.ResponseWriter, r *http.Request) {
+	if !h.registrationEnabled {
 		http.NotFound(w, r)
 		return
 	}
@@ -106,7 +162,7 @@ func (a *App) finishRegistration(w http.ResponseWriter, r *http.Request) {
 
 	r.Body = io.NopCloser(bytes.NewReader(body))
 
-	userID, credential, err := a.webAuthn.FinishRegistration(req.SessionID, r)
+	userID, credential, err := h.webAuthn.FinishRegistration(req.SessionID, r)
 	if err != nil {
 		logger.Warn("finish_registration_failed", "event", "finish_registration_failed", "component", "auth", "operation", "finish_registration", "error", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "registration failed"})
@@ -115,7 +171,7 @@ func (a *App) finishRegistration(w http.ResponseWriter, r *http.Request) {
 
 	_ = credential
 
-	if err := a.sessions.CreateSession(w, r, userID); err != nil {
+	if err := h.sessionCookie.Set(w, r, userID); err != nil {
 		logger.Error("create_session_after_registration_failed", "event", "create_session_after_registration_failed", "component", "auth", "operation", "create_session", "user_id", userID, "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -128,7 +184,7 @@ type beginLoginRequest struct {
 	Username string `json:"username"`
 }
 
-func (a *App) beginLogin(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandlers) beginLogin(w http.ResponseWriter, r *http.Request) {
 	logger := LoggerFromContext(r.Context())
 	var req beginLoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -147,7 +203,7 @@ func (a *App) beginLogin(w http.ResponseWriter, r *http.Request) {
 	var userID int64
 	var err error
 	for _, username := range auth.LoginUsernameCandidates(rawUsername) {
-		sid, options, userID, err = a.webAuthn.BeginLogin(username)
+		sid, options, userID, err = h.webAuthn.BeginLogin(username)
 		if err == nil {
 			break
 		}
@@ -165,7 +221,7 @@ func (a *App) beginLogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (a *App) finishLogin(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandlers) finishLogin(w http.ResponseWriter, r *http.Request) {
 	logger := LoggerFromContext(r.Context())
 	body, err := io.ReadAll(r.Body)
 	if closeErr := r.Body.Close(); closeErr != nil && err == nil {
@@ -186,14 +242,14 @@ func (a *App) finishLogin(w http.ResponseWriter, r *http.Request) {
 
 	r.Body = io.NopCloser(bytes.NewReader(body))
 
-	userID, err := a.webAuthn.FinishLogin(req.SessionID, r)
+	userID, err := h.webAuthn.FinishLogin(req.SessionID, r)
 	if err != nil {
 		logger.Warn("finish_login_failed", "event", "finish_login_failed", "component", "auth", "operation", "finish_login", "error", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "login failed"})
 		return
 	}
 
-	if err := a.sessions.CreateSession(w, r, userID); err != nil {
+	if err := h.sessionCookie.Set(w, r, userID); err != nil {
 		logger.Error("create_session_after_login_failed", "event", "create_session_after_login_failed", "component", "auth", "operation", "create_session", "user_id", userID, "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -202,21 +258,9 @@ func (a *App) finishLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (a *App) logout(w http.ResponseWriter, r *http.Request) {
-	logger := LoggerFromContext(r.Context())
-	// Simple CSRF double-submit check: compare csrf cookie to form value
-	if err := r.ParseForm(); err == nil {
-		formToken := r.FormValue("csrf_token")
-		cookie, err := r.Cookie("csrf_token")
-		if err != nil || cookie.Value == "" || cookie.Value != formToken {
-			logger.Warn("logout_csrf_mismatch", "event", "logout_csrf_mismatch", "component", "auth", "operation", "logout", "error", err)
-			http.Error(w, "invalid request", http.StatusBadRequest)
-			return
-		}
-	}
-
-	_ = a.sessions.DestroySession(w, r)
-	a.redirect(w, r, "/login", noticeSignedOut)
+func (h *AuthHandlers) logout(w http.ResponseWriter, r *http.Request) {
+	_ = h.sessionCookie.Clear(w, r)
+	redirect(w, r, "/login", noticeSignedOut)
 }
 
 func writeJSON(w http.ResponseWriter, status int, data any) {
@@ -259,4 +303,8 @@ func safeNextPath(next string) string {
 		return ""
 	}
 	return next
+}
+
+func (h *AuthHandlers) usernamePolicyHandler(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, auth.DefaultUsernamePolicy)
 }

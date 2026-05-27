@@ -7,7 +7,20 @@ import (
 	"invoice-app/internal/db"
 )
 
-func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {
+type SettingsHandlers struct {
+	renderer *Renderer
+}
+
+func NewSettingsHandlers(renderer *Renderer) *SettingsHandlers {
+	return &SettingsHandlers{renderer: renderer}
+}
+
+func (h *SettingsHandlers) Routes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /settings", h.settingsPage)
+	mux.HandleFunc("POST /settings", h.saveSettings)
+}
+
+func (h *SettingsHandlers) settingsPage(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	settings, err := store.LoadSettings()
 	if err != nil {
@@ -15,13 +28,13 @@ func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.renderPage(w, r, http.StatusOK, "settings.html", SettingsPageData{
+	h.renderer.Page(w, r, http.StatusOK, "settings.html", SettingsPageData{
 		Settings: settings,
 		Notice:   noticeFromRequest(r),
 	}, "settings.html")
 }
 
-func (a *App) saveSettings(w http.ResponseWriter, r *http.Request) {
+func (h *SettingsHandlers) saveSettings(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
@@ -54,5 +67,5 @@ func (a *App) saveSettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.redirect(w, r, "/settings", "Settings saved")
+	redirect(w, r, "/settings", "Settings saved")
 }
