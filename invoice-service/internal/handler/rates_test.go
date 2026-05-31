@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,6 +26,57 @@ func TestRatesPageReturns200(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	body, _ := io.ReadAll(resp.Body)
 	assert.Contains(t, string(body), "Rates")
+}
+
+func TestRatesPageActiveOnlyFiltersInactiveRates(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+
+	require.NoError(t, ta.store.CreateRate("Active Consulting", yesterday, "", 150.00))
+	require.NoError(t, ta.store.CreateRate("Future Design", tomorrow, "", 120.00))
+	require.NoError(t, ta.store.CreateRate("Expired Support", yesterday, yesterday, 90.00))
+
+	req := httptest.NewRequest("GET", "/rates?active_only=1", nil)
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	ta.rh.ratesPage(w, req)
+
+	resp := w.Result()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	bodyText := string(body)
+	assert.Contains(t, bodyText, "Active Consulting")
+	assert.NotContains(t, bodyText, "Future Design")
+	assert.NotContains(t, bodyText, "Expired Support")
+	assert.Contains(t, bodyText, "checked")
+	assert.Contains(t, bodyText, `hx-include="#rates-filter"`)
+}
+
+func TestRatesTableActiveOnlyFiltersInactiveRates(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+
+	require.NoError(t, ta.store.CreateRate("Active Consulting", yesterday, "", 150.00))
+	require.NoError(t, ta.store.CreateRate("Future Design", tomorrow, "", 120.00))
+
+	req := httptest.NewRequest("GET", "/rates/table?active_only=1", nil)
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	ta.rh.ratesTable(w, req)
+
+	resp := w.Result()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "Active Consulting")
+	assert.NotContains(t, string(body), "Future Design")
 }
 
 func TestCreateRateValid(t *testing.T) {
@@ -151,6 +203,35 @@ func TestUpdateRateSuccess(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	body, _ := io.ReadAll(resp.Body)
 	assert.Contains(t, string(body), "Design")
+}
+
+func TestUpdateRateRespectsActiveOnlyFilter(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	twoDaysAgo := time.Now().AddDate(0, 0, -2).Format("2006-01-02")
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+
+	require.NoError(t, ta.store.CreateRate("Consulting", twoDaysAgo, "", 150.00))
+
+	req := newFormRequest("/rates/1", urlencode(map[string]string{
+		"category":    "Consulting",
+		"start_date":  twoDaysAgo,
+		"end_date":    yesterday,
+		"rate":        "200.00",
+		"active_only": "1",
+	}))
+	req.SetPathValue("id", "1")
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	ta.rh.updateRate(w, req)
+
+	resp := w.Result()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	assert.NotContains(t, string(body), "Consulting")
+	assert.Contains(t, string(body), "No rates yet.")
 }
 
 func TestUpdateRateMissingCategory(t *testing.T) {

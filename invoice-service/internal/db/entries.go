@@ -5,11 +5,27 @@ import (
 )
 
 func (s *Store) ListEntries() ([]Entry, error) {
-	rows, err := s.db.Query(`
+	return s.ListEntriesFiltered("", "")
+}
+
+func (s *Store) ListEntriesFiltered(year, month string) ([]Entry, error) {
+	query := `
 		SELECT id, date, category, hours, COALESCE(notes, '')
 		FROM entries
-		ORDER BY date DESC, id DESC
-	`)
+		WHERE 1=1
+	`
+	args := []any{}
+	if year != "" {
+		query += ` AND strftime('%Y', date) = ?`
+		args = append(args, year)
+	}
+	if month != "" {
+		query += ` AND strftime('%m', date) = ?`
+		args = append(args, month)
+	}
+	query += ` ORDER BY date DESC, id DESC`
+
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list entries: %w", err)
 	}

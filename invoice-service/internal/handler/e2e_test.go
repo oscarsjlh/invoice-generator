@@ -21,11 +21,11 @@ func TestFullInvoiceWorkflow(t *testing.T) {
 
 	ta.store.SaveSettings(testutil.SampleSettings())
 
-	createEntryViaHTTP(t, ta.app, ta.store, "2024-03-15", "Consulting", "4.5", "Client meeting")
-	createEntryViaHTTP(t, ta.app, ta.store, "2024-03-16", "Design", "2.0", "UI review")
-
 	createRateViaHTTP(t, ta.app, ta.store, "Consulting", "2024-01-01", "", "150.00")
 	createRateViaHTTP(t, ta.app, ta.store, "Design", "2024-01-01", "", "120.00")
+
+	createEntryViaHTTP(t, ta.app, ta.store, "2024-03-15", "Consulting", "4.5", "Client meeting")
+	createEntryViaHTTP(t, ta.app, ta.store, "2024-03-16", "Design", "2.0", "UI review")
 
 	generateInvoiceViaHTTP(t, ta.app, ta.store, "2024-03", "All")
 
@@ -45,6 +45,7 @@ func TestEntryCRUDViaHTTP(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 
+	createRateViaHTTP(t, ta.app, ta.store, "Consulting", "2024-01-01", "", "150.00")
 	createEntryViaHTTP(t, ta.app, ta.store, "2024-03-15", "Consulting", "4.5", "")
 
 	req := httptest.NewRequest("GET", "/entries/table", nil)

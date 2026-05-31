@@ -26,9 +26,10 @@ type RateHint struct {
 }
 
 type OCRRequest struct {
-	Hints     ContextHint `json:"hints"`
-	Rates     []RateHint  `json:"rates,omitempty"`
-	SessionID int64       `json:"session_id"`
+	Hints       ContextHint `json:"hints"`
+	Rates       []RateHint  `json:"rates,omitempty"`
+	SessionID   int64       `json:"session_id"`
+	CurrentYear int         `json:"current_year"`
 }
 
 type OCRExtractedField struct {

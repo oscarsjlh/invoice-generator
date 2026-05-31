@@ -21,6 +21,7 @@ import tempfile
 import time
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from typing import Optional
 
 import boto3
 from opentelemetry import trace
@@ -31,6 +32,13 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import SpanKind, Status, StatusCode
 from PIL import Image
+
+try:
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+except ImportError:
+    pass
 
 tracer = trace.get_tracer("invoice-app/ocr-service")
 
@@ -89,13 +97,15 @@ def parse_multipart(body, boundary):
     return parts
 
 
-def normalize_date(raw):
+def normalize_date(raw, current_year: Optional[int] = None):
+    if current_year is None:
+        current_year = datetime.now().year
     raw = raw.strip()
     parts = [p.strip() for p in raw.replace("-", "/").split("/")]
     if len(parts) == 3 and len(parts[0]) == 4:
         return raw.replace("/", "-")
     if len(parts) == 2:
-        parts.append(str(datetime.now().year))
+        parts.append(str(current_year))
     elif len(parts) == 3 and len(parts[2]) == 2:
         parts[2] = "20" + parts[2]
     if len(parts) == 3:
@@ -123,12 +133,12 @@ def normalize_date(raw):
                 day = int(day_part)
             except ValueError:
                 continue
-            return f"{datetime.now().year:04d}-{num:02d}-{day:02d}"
+            return f"{current_year:04d}-{num:02d}-{day:02d}"
 
     return raw
 
 
-def parse_handwritten_text(content, categories):
+def parse_handwritten_text(content, categories, current_year=None):
     entries = []
     for line in content.strip().split("\n"):
         line = line.strip()
@@ -166,7 +176,7 @@ def parse_handwritten_text(content, categories):
             {
                 "date": {
                     "raw": date_raw,
-                    "normalized": normalize_date(date_raw),
+                    "normalized": normalize_date(date_raw, current_year),
                     "confidence": 0.85,
                     "needs_review": False,
                 },
@@ -209,11 +219,13 @@ class BedrockBackend:
     def extract(self, image_paths, request_data):
         session_id = request_data.get("session_id", 0)
         categories = request_data.get("hints", {}).get("categories", [])
+        current_year = request_data.get("current_year") or datetime.now().year
         cat_list = ", ".join(categories) if categories else "(no known categories)"
 
         prompt = (
             "Extract handwritten work-log entries from this page. "
             "Each line contains: date, category, hours, optional notes. "
+            f"If a date omits the year, infer {current_year}. "
             f"Known categories (prefer these if the handwriting matches): {cat_list}. "
             "Output format — one entry per line: DATE | CATEGORY | HOURS | NOTES\n"
             "If a field is unreadable, use '?'."
@@ -257,7 +269,7 @@ class BedrockBackend:
         result = json.loads(resp["body"].read())
         text = result["choices"][0]["message"]["content"]
 
-        entries = parse_handwritten_text(text, categories)
+        entries = parse_handwritten_text(text, categories, current_year)
 
         input_tokens = result.get("usage", {}).get("input_tokens", 0)
         output_tokens = result.get("usage", {}).get("output_tokens", 0)
@@ -332,7 +344,9 @@ class OCRHandler(BaseHTTPRequestHandler):
                     OCRHandler.backend = BedrockBackend()
                 result = OCRHandler.backend.extract(image_paths, request_data or {})
                 span.set_attribute("http.response.status_code", 200)
-                span.set_attribute("ocr.entries_extracted", len(result.get("entries", [])))
+                span.set_attribute(
+                    "ocr.entries_extracted", len(result.get("entries", []))
+                )
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()

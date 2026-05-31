@@ -1,27 +1,30 @@
 {{define "entry_edit_row"}}
 <tr>
   <td colspan="5">
-    <form hx-post="/entries/{{.ID}}" hx-target="#entries-table" hx-swap="outerHTML" style="margin: 0;">
+    <form hx-post="/entries/{{.Entry.ID}}{{.FilterQuery}}" hx-target="#entries-table" hx-swap="outerHTML" style="margin: 0;">
       <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 0.5rem; align-items: end;">
         <label style="margin: 0;">
           Date
-          <input type="date" name="date" value="{{.Date}}" required>
+          <input type="date" name="date" value="{{.Entry.Date}}" required>
         </label>
         <label style="margin: 0;">
           Category
-          <input type="text" name="category" value="{{.Category}}" required>
+          <input type="text" name="category" value="{{.Entry.Category}}" required list="category-list-edit-{{.Entry.ID}}" autocomplete="off">
+          <datalist id="category-list-edit-{{.Entry.ID}}">
+            {{range .Categories}}<option value="{{.}}">{{.}}</option>{{end}}
+          </datalist>
         </label>
         <label style="margin: 0;">
           Hours
-          <input type="number" name="hours" value="{{money .Hours}}" min="0" step="0.25" required>
+          <input type="number" name="hours" value="{{money .Entry.Hours}}" min="0" step="0.25" required>
         </label>
         <label style="margin: 0;">
           Notes
-          <input type="text" name="notes" value="{{.Notes}}">
+          <input type="text" name="notes" value="{{.Entry.Notes}}">
         </label>
         <div style="display: flex; gap: 0.5rem; align-items: end;">
           <button type="submit">Save</button>
-          <button type="button" class="secondary" hx-get="/entries/table" hx-target="#entries-table" hx-swap="outerHTML">Cancel</button>
+          <button type="button" class="secondary" hx-get="/entries/table{{.FilterQuery}}" hx-target="#entries-table" hx-swap="outerHTML">Cancel</button>
         </div>
       </div>
     </form>

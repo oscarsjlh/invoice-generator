@@ -41,6 +41,7 @@
             <th>Hours</th>
             <th>Notes</th>
             <th>Confidence</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -80,6 +81,13 @@
               {{else if ge .Confidence 0.5}}<mark>{{printf "%.0f%%" (mul .Confidence 100)}}</mark>
               {{else}}<mark class="contrast">{{printf "%.0f%%" (mul .Confidence 100)}}</mark>{{end}}
               {{if .NeedsReview}}<br><small class="muted">needs review</small>{{end}}
+            </td>
+            <td>
+              {{if not .Confirmed}}
+              <button type="submit" class="secondary contrast" formaction="/ocr/import/{{$.Session.ID}}/drafts/{{.ID}}/delete" formmethod="post" formnovalidate>Delete</button>
+              {{else}}
+              <small class="muted">Saved</small>
+              {{end}}
             </td>
           </tr>
           {{end}}

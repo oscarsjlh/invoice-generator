@@ -27,6 +27,33 @@ func (s *Store) ListRates() ([]Rate, error) {
 	return rates, rows.Err()
 }
 
+func (s *Store) ListActiveRates(today string) ([]Rate, error) {
+	rows, err := s.db.Query(`
+		SELECT id, category, start_date, end_date, rate
+		FROM rates
+		WHERE start_date <= ?
+		  AND (end_date = '' OR end_date >= ?)
+		ORDER BY category ASC, start_date DESC, id DESC
+	`, today, today)
+	if err != nil {
+		return nil, fmt.Errorf("list active rates: %w", err)
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	rates := []Rate{}
+	for rows.Next() {
+		var rate Rate
+		if err := rows.Scan(&rate.ID, &rate.Category, &rate.StartDate, &rate.EndDate, &rate.Rate); err != nil {
+			return nil, fmt.Errorf("scan active rate: %w", err)
+		}
+		rates = append(rates, rate)
+	}
+
+	return rates, rows.Err()
+}
+
 func (s *Store) CreateRate(category, startDate, endDate string, rate float64) error {
 	if err := s.checkRateOverlap(category, startDate, endDate, 0); err != nil {
 		return err

@@ -13,8 +13,10 @@
 <section class="grid-2">
   <article>
     <h2>Add Entry</h2>
-    <form method="post" action="/entries">
+    <form method="post" action="/entries{{.FilterQuery}}">
       <input type="hidden" name="csrf_token" value="">
+      <input type="hidden" name="year" value="{{.SelectedYear}}">
+      <input type="hidden" name="month" value="{{.SelectedMonth}}">
       <label>
         Date
         <input type="date" name="date" required>

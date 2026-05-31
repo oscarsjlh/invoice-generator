@@ -25,6 +25,12 @@ func (s *tracedStore) ListEntries() ([]db.Entry, error) {
 	return traceDB(s.ctx, "entries.list", s.next.ListEntries)
 }
 
+func (s *tracedStore) ListEntriesFiltered(year, month string) ([]db.Entry, error) {
+	return traceDB(s.ctx, "entries.filtered.list", func() ([]db.Entry, error) {
+		return s.next.ListEntriesFiltered(year, month)
+	})
+}
+
 func (s *tracedStore) CreateEntry(date, category string, hours float64, notes string) error {
 	return traceDBErr(s.ctx, "entries.create", func() error {
 		return s.next.CreateEntry(date, category, hours, notes)
@@ -51,6 +57,12 @@ func (s *tracedStore) DeleteEntry(id int64) error {
 
 func (s *tracedStore) ListRates() ([]db.Rate, error) {
 	return traceDB(s.ctx, "rates.list", s.next.ListRates)
+}
+
+func (s *tracedStore) ListActiveRates(today string) ([]db.Rate, error) {
+	return traceDB(s.ctx, "rates.list_active", func() ([]db.Rate, error) {
+		return s.next.ListActiveRates(today)
+	})
 }
 
 func (s *tracedStore) CreateRate(category, startDate, endDate string, rate float64) error {
@@ -190,6 +202,12 @@ func (s *tracedStore) GetDraftEntry(id int64) (db.OCRDraftEntry, error) {
 func (s *tracedStore) UpdateDraftEntry(id int64, date, category, hours, notes string) error {
 	return traceDBErr(s.ctx, "ocr_drafts.update", func() error {
 		return s.next.UpdateDraftEntry(id, date, category, hours, notes)
+	})
+}
+
+func (s *tracedStore) DeleteDraftEntry(sessionID, draftID int64) error {
+	return traceDBErr(s.ctx, "ocr_drafts.delete", func() error {
+		return s.next.DeleteDraftEntry(sessionID, draftID)
 	})
 }
 

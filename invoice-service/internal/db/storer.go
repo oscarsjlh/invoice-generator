@@ -4,6 +4,7 @@ import "database/sql"
 
 type EntryStore interface {
 	ListEntries() ([]Entry, error)
+	ListEntriesFiltered(year, month string) ([]Entry, error)
 	CreateEntry(date, category string, hours float64, notes string) error
 	GetEntry(id int64) (Entry, error)
 	UpdateEntry(id int64, date, category string, hours float64, notes string) error
@@ -12,6 +13,7 @@ type EntryStore interface {
 
 type RateStore interface {
 	ListRates() ([]Rate, error)
+	ListActiveRates(today string) ([]Rate, error)
 	CreateRate(category, startDate, endDate string, rate float64) error
 	DeleteRate(id int64) error
 	GetRate(id int64) (Rate, error)
@@ -49,6 +51,7 @@ type OCRStore interface {
 	GetDraftEntries(sessionID int64) ([]OCRDraftEntry, error)
 	GetDraftEntry(id int64) (OCRDraftEntry, error)
 	UpdateDraftEntry(id int64, date, category, hours, notes string) error
+	DeleteDraftEntry(sessionID, draftID int64) error
 	ConfirmDraftEntries(sessionID int64, ids []int64) (confirmed []int64, skipped []int64, err error)
 	DeleteOCRSession(id int64) error
 	CleanupStaleOCRSessions(maxAgeHours int) (int, error)

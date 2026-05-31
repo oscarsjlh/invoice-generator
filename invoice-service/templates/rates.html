@@ -44,6 +44,22 @@
 
 <section>
   <h2>All Rates</h2>
+  <form id="rates-filter">
+    <label>
+      <input
+        id="rates-active-only"
+        type="checkbox"
+        name="active_only"
+        value="1"
+        {{if .ActiveOnly}}checked{{end}}
+        hx-get="/rates/table"
+        hx-target="#rates-table"
+        hx-swap="outerHTML"
+        hx-include="#rates-filter"
+      >
+      Active rates only
+    </label>
+  </form>
   {{template "rates_table" .}}
 </section>
 {{end}}

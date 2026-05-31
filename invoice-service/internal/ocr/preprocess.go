@@ -1,9 +1,11 @@
 package ocr
 
 import (
+	"bytes"
 	"fmt"
 	"image"
 	"image/jpeg"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,9 +14,9 @@ import (
 func ValidateImageFile(filePath string) error {
 	ext := strings.ToLower(filepath.Ext(filePath))
 	switch ext {
-	case ".jpg", ".jpeg", ".png":
+	case ".jpg", ".jpeg", ".png", ".heic", ".heif":
 	default:
-		return fmt.Errorf("unsupported image format %q, only JPEG and PNG are accepted", ext)
+		return fmt.Errorf("unsupported image format %q, only JPEG, PNG, HEIC, and HEIF are accepted", ext)
 	}
 
 	file, err := os.Open(filePath)
@@ -24,6 +26,15 @@ func ValidateImageFile(filePath string) error {
 	defer func() {
 		_ = file.Close()
 	}()
+
+	if ext == ".heic" || ext == ".heif" {
+		if ok, err := hasHEIFSignature(file); err != nil {
+			return fmt.Errorf("cannot inspect HEIC/HEIF image: %w", err)
+		} else if !ok {
+			return fmt.Errorf("file content is not a valid HEIC/HEIF image")
+		}
+		return nil
+	}
 
 	_, format, err := image.DecodeConfig(file)
 	if err != nil {
@@ -36,6 +47,35 @@ func ValidateImageFile(filePath string) error {
 	}
 
 	return nil
+}
+
+func hasHEIFSignature(file *os.File) (bool, error) {
+	header := make([]byte, 32)
+	n, err := file.Read(header)
+	if err != nil && err != io.EOF {
+		return false, err
+	}
+	if n < 12 || string(header[4:8]) != "ftyp" {
+		return false, nil
+	}
+	brands := [][]byte{
+		[]byte("heic"),
+		[]byte("heix"),
+		[]byte("hevc"),
+		[]byte("hevx"),
+		[]byte("heim"),
+		[]byte("heis"),
+		[]byte("hevm"),
+		[]byte("hevs"),
+		[]byte("mif1"),
+		[]byte("msf1"),
+	}
+	for _, brand := range brands {
+		if bytes.Contains(header[8:n], brand) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func PreprocessImage(srcPath, dstPath string) error {

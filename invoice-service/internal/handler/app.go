@@ -45,17 +45,17 @@ func (a *App) StoreForTest() *db.MultiStore {
 }
 
 type App struct {
-	multiStore   *db.MultiStore
-	stores       *RequestStoreProvider
-	authDB       *db.AuthDB
-	webAuthn     *auth.WebAuthnManager
+	multiStore    *db.MultiStore
+	stores        *RequestStoreProvider
+	authDB        *db.AuthDB
+	webAuthn      *auth.WebAuthnManager
 	sessionCookie *auth.SessionCookie
-	cfg          config.Config
-	logger       *slog.Logger
-	renderer     *Renderer
-	ocrJobs      *OCRJobRunner
-	authEnabled  bool
-	authLimiter  *AuthRateLimiter
+	cfg           config.Config
+	logger        *slog.Logger
+	renderer      *Renderer
+	ocrJobs       *OCRJobRunner
+	authEnabled   bool
+	authLimiter   *AuthRateLimiter
 }
 
 type DashboardPageData struct {
@@ -72,18 +72,30 @@ type DashboardPageData struct {
 }
 
 type EntriesPageData struct {
-	Entries    []db.Entry
-	Categories []string
-	Notice     string
-	Form       db.Entry
-	User       *db.User
+	Entries       []db.Entry
+	Categories    []string
+	Years         []string
+	Months        []string
+	SelectedYear  string
+	SelectedMonth string
+	FilterQuery   string
+	Notice        string
+	Form          db.Entry
+	User          *db.User
+}
+
+type EntryEditRowData struct {
+	Entry       db.Entry
+	Categories  []string
+	FilterQuery string
 }
 
 type RatesPageData struct {
-	Rates  []db.Rate
-	Notice string
-	Form   db.Rate
-	User   *db.User
+	Rates      []db.Rate
+	Notice     string
+	Form       db.Rate
+	ActiveOnly bool
+	User       *db.User
 }
 
 type InvoicesPageData struct {
@@ -137,14 +149,6 @@ func (a *App) SetLegacyStore(store *db.Store) {
 // SetOCRClient sets the OCR extractor for testing.
 func (a *App) SetOCRClient(client ocr.Extractor) {
 	a.ocrJobs.SetExtractor(client)
-}
-
-func (a *App) renderPage(w http.ResponseWriter, r *http.Request, status int, page string, data any, extra ...string) {
-	a.renderer.Page(w, r, status, page, data, extra...)
-}
-
-func (a *App) renderPartial(w http.ResponseWriter, status int, name string, data any, files ...string) {
-	a.renderer.Partial(w, status, name, data, files...)
 }
 
 func (a *App) Routes() http.Handler {

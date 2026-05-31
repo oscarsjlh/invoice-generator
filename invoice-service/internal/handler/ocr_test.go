@@ -116,6 +116,87 @@ func TestOCRSessionStatusIncludesDraftCategories(t *testing.T) {
 	assert.Contains(t, string(body), `<option value="Consulting" selected>Consulting</option>`)
 }
 
+func TestOCRSessionStatusIncludesDraftDeleteAction(t *testing.T) {
+	t.Parallel()
+	ta := newTestAppWithAuth(t)
+	ta.app.cfg.OCREnabled = true
+	ta.oh = NewOCRHandlers(ta.app.renderer, ta.app.ocrJobs, ta.app.cfg)
+
+	store := ta.store
+	sessionID, err := store.CreateOCRSession()
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateOCRSessionState(sessionID, "review_ready", ""))
+	require.NoError(t, store.SaveDraftEntries(sessionID, []db.OCRDraftEntry{
+		{
+			DateNormalized:     "2026-05-24",
+			CategoryNormalized: "Consulting",
+			HoursNormalized:    2,
+			Confidence:         0.8,
+		},
+	}))
+	drafts, err := store.GetDraftEntries(sessionID)
+	require.NoError(t, err)
+	require.Len(t, drafts, 1)
+
+	idStr := strconv.FormatInt(sessionID, 10)
+	req := httptest.NewRequest("GET", "/ocr/import/"+idStr, nil)
+	req.SetPathValue("id", idStr)
+	req = req.WithContext(WithTestStore(req.Context(), ta.store))
+	w := httptest.NewRecorder()
+
+	ta.oh.ocrSessionStatus(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Result().StatusCode)
+	body, _ := io.ReadAll(w.Result().Body)
+	assert.Contains(t, string(body), "/ocr/import/"+idStr+"/drafts/"+strconv.FormatInt(drafts[0].ID, 10)+"/delete")
+}
+
+func TestOCRDeleteDraftHandlerRemovesDraftFromSession(t *testing.T) {
+	t.Parallel()
+	ta := newTestAppWithAuth(t)
+	ta.app.cfg.OCREnabled = true
+	ta.oh = NewOCRHandlers(ta.app.renderer, ta.app.ocrJobs, ta.app.cfg)
+
+	store := ta.store
+	sessionID, err := store.CreateOCRSession()
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateOCRSessionState(sessionID, "review_ready", ""))
+	require.NoError(t, store.SaveDraftEntries(sessionID, []db.OCRDraftEntry{
+		{
+			DateNormalized:     "2026-05-24",
+			CategoryNormalized: "Consulting",
+			HoursNormalized:    2,
+			Confidence:         0.8,
+		},
+		{
+			DateNormalized:     "2026-05-25",
+			CategoryNormalized: "Admin",
+			HoursNormalized:    1,
+			Confidence:         0.7,
+		},
+	}))
+	drafts, err := store.GetDraftEntries(sessionID)
+	require.NoError(t, err)
+	require.Len(t, drafts, 2)
+
+	idStr := strconv.FormatInt(sessionID, 10)
+	draftIDStr := strconv.FormatInt(drafts[0].ID, 10)
+	req := httptest.NewRequest("POST", "/ocr/import/"+idStr+"/drafts/"+draftIDStr+"/delete", nil)
+	req.SetPathValue("id", idStr)
+	req.SetPathValue("draftID", draftIDStr)
+	req = req.WithContext(WithTestStore(req.Context(), ta.store))
+	w := httptest.NewRecorder()
+
+	ta.oh.ocrDeleteDraft(w, req)
+
+	assert.Equal(t, http.StatusSeeOther, w.Result().StatusCode)
+	assert.Equal(t, "/ocr/import/"+idStr+"?notice=Draft+entry+deleted", w.Result().Header.Get("Location"))
+	remaining, err := store.GetDraftEntries(sessionID)
+	require.NoError(t, err)
+	require.Len(t, remaining, 1)
+	assert.Equal(t, drafts[1].ID, remaining[0].ID)
+}
+
 func TestOCRDeleteSessionHandler(t *testing.T) {
 	t.Parallel()
 	ta := newTestAppWithAuth(t)

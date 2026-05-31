@@ -5,8 +5,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
@@ -39,6 +41,13 @@ func TestClientExtractInjectsTraceparent(t *testing.T) {
 		}
 		if got := req.Header.Get("Content-Type"); !strings.HasPrefix(got, "multipart/form-data;") {
 			t.Fatalf("Content-Type = %q, want multipart/form-data", got)
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+		if want := `"current_year":` + strconv.Itoa(time.Now().Year()); !strings.Contains(string(body), want) {
+			t.Fatalf("request body does not contain %s: %s", want, string(body))
 		}
 		return &http.Response{
 			StatusCode: http.StatusOK,

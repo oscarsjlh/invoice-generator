@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 )
@@ -197,6 +198,59 @@ func (s *Store) UpdateDraftEntry(id int64, date, category, hours, notes string) 
 	)
 	if err != nil {
 		return fmt.Errorf("update draft %d: %w", id, err)
+	}
+	return nil
+}
+
+func (s *Store) DeleteDraftEntry(sessionID, draftID int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	result, err := tx.Exec(
+		`DELETE FROM ocr_draft_entries WHERE session_id = ? AND id = ? AND confirmed = 0`,
+		sessionID, draftID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete draft %d: %w", draftID, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete draft %d rows affected: %w", draftID, err)
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	var total, confirmed int
+	err = tx.QueryRow(
+		`SELECT COUNT(*), COALESCE(SUM(CASE WHEN confirmed = 1 THEN 1 ELSE 0 END), 0)
+		 FROM ocr_draft_entries WHERE session_id = ?`,
+		sessionID,
+	).Scan(&total, &confirmed)
+	if err != nil {
+		return fmt.Errorf("count drafts: %w", err)
+	}
+
+	state := "review_ready"
+	if total > 0 && confirmed == total {
+		state = "confirmed"
+	} else if confirmed > 0 {
+		state = "confirmed_part"
+	}
+	if _, err := tx.Exec(
+		`UPDATE ocr_import_sessions SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		state, sessionID,
+	); err != nil {
+		return fmt.Errorf("update session state: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
 	}
 	return nil
 }

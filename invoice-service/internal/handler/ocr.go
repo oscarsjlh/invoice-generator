@@ -29,6 +29,7 @@ func (h *OCRHandlers) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /ocr/import", h.ocrStartSession)
 	mux.HandleFunc("GET /ocr/import/{id}", h.ocrSessionStatus)
 	mux.HandleFunc("POST /ocr/import/{id}/confirm", h.ocrConfirmDrafts)
+	mux.HandleFunc("POST /ocr/import/{id}/drafts/{draftID}/delete", h.ocrDeleteDraft)
 	mux.HandleFunc("POST /ocr/import/{id}/delete", h.ocrDeleteSession)
 }
 
@@ -259,6 +260,35 @@ func mergeDraftCategories(categories []string, drafts []db.OCRDraftEntry) []stri
 		}
 	}
 	return merged
+}
+
+func (h *OCRHandlers) ocrDeleteDraft(w http.ResponseWriter, r *http.Request) {
+	if !h.cfg.OCREnabled {
+		http.Error(w, "OCR import is not enabled", http.StatusNotFound)
+		return
+	}
+
+	store := StoreFromContext(r.Context())
+
+	sessionID, err := parseInt64Path(r, "id")
+	if err != nil {
+		http.Error(w, "invalid session id", http.StatusBadRequest)
+		return
+	}
+	draftID, err := parseInt64Path(r, "draftID")
+	if err != nil {
+		http.Error(w, "invalid draft id", http.StatusBadRequest)
+		return
+	}
+
+	importer := h.ocrImporter(store)
+	if err := importer.DeleteDraft(r.Context(), sessionID, draftID); err != nil {
+		LoggerFromContext(r.Context()).Warn("delete ocr draft", "session_id", sessionID, "draft_id", draftID, "error", err)
+		redirect(w, r, fmt.Sprintf("/ocr/import/%d", sessionID), err.Error())
+		return
+	}
+
+	redirect(w, r, fmt.Sprintf("/ocr/import/%d", sessionID), "Draft entry deleted")
 }
 
 func (h *OCRHandlers) ocrDeleteSession(w http.ResponseWriter, r *http.Request) {

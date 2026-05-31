@@ -51,9 +51,10 @@ func (c *Client) Extract(ctx context.Context, images []string, hints ContextHint
 	writer := multipart.NewWriter(&buf)
 
 	reqData := OCRRequest{
-		Hints:     hints,
-		Rates:     rates,
-		SessionID: sessionID,
+		Hints:       hints,
+		Rates:       rates,
+		SessionID:   sessionID,
+		CurrentYear: time.Now().Year(),
 	}
 	jsonBytes, err := json.Marshal(reqData)
 	if err != nil {

@@ -21,7 +21,7 @@
           <td>GBP {{money .Rate}}</td>
           <td class="no-print">
             <button type="button" class="secondary" hx-get="/rates/{{.ID}}/edit" hx-target="closest tr" hx-swap="outerHTML">Edit</button>
-            <button type="button" class="secondary" hx-post="/rates/{{.ID}}/delete" hx-target="#rates-table" hx-swap="outerHTML" hx-confirm="Delete this rate?">Delete</button>
+            <button type="button" class="secondary" hx-post="/rates/{{.ID}}/delete" hx-target="#rates-table" hx-swap="outerHTML" hx-confirm="Delete this rate?" hx-include="#rates-filter">Delete</button>
           </td>
         </tr>
         {{end}}

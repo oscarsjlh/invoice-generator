@@ -41,6 +41,7 @@ type Store interface {
 	GetDraftEntries(sessionID int64) ([]db.OCRDraftEntry, error)
 	GetDraftEntry(id int64) (db.OCRDraftEntry, error)
 	UpdateDraftEntry(id int64, date, category, hours, notes string) error
+	DeleteDraftEntry(sessionID, draftID int64) error
 	ConfirmDraftEntries(sessionID int64, ids []int64) (confirmed []int64, skipped []int64, err error)
 	DeleteOCRSession(id int64) error
 	ListCategories() ([]string, error)
@@ -200,11 +201,6 @@ func (i *Importer) ProcessSession(ctx context.Context, sessionID int64) error {
 		return i.fail(sessionID, "get images", err)
 	}
 	span.SetAttributes(attribute.Int("ocr.image_count", len(images)))
-	imagePaths := make([]string, 0, len(images))
-	for _, img := range images {
-		imagePaths = append(imagePaths, img.FilePath)
-	}
-
 	categories, err := i.Store.ListCategories()
 	if err != nil {
 		recordSpanError(span, err)
@@ -216,11 +212,23 @@ func (i *Importer) ProcessSession(ctx context.Context, sessionID int64) error {
 		return i.fail(sessionID, "list rates", err)
 	}
 
-	result, err := i.extract(ctx, imagePaths, categories, rates, sessionID)
-	if err != nil {
-		recordSpanError(span, err)
-		return i.fail(sessionID, "OCR processing failed", err)
+	result := &ocr.OCRResponse{
+		SessionID: sessionID,
+		Status:    "success",
 	}
+	for index, img := range images {
+		if err := ctx.Err(); err != nil {
+			recordSpanError(span, err)
+			return err
+		}
+		pageResult, err := i.extract(ctx, []string{img.FilePath}, categories, rates, sessionID)
+		if err != nil {
+			recordSpanError(span, err)
+			return i.fail(sessionID, fmt.Sprintf("OCR processing failed for image %d", index+1), err)
+		}
+		mergeOCRResponse(result, pageResult)
+	}
+	result.Metadata.PagesProcessed = len(images)
 
 	drafts := buildDraftEntries(result, categories)
 	span.SetAttributes(attribute.Int("ocr.draft_count", len(drafts)))
@@ -234,6 +242,27 @@ func (i *Importer) ProcessSession(ctx context.Context, sessionID int64) error {
 		return err
 	}
 	return nil
+}
+
+func mergeOCRResponse(dst, src *ocr.OCRResponse) {
+	if src == nil {
+		return
+	}
+	dst.Entries = append(dst.Entries, src.Entries...)
+	if dst.Metadata.ModelUsed == "" {
+		dst.Metadata.ModelUsed = src.Metadata.ModelUsed
+	}
+	dst.Metadata.ProcessingTimeMs += src.Metadata.ProcessingTimeMs
+	if len(dst.Entries) == 0 {
+		dst.Metadata.AvgConfidence = 0
+		return
+	}
+
+	total := 0.0
+	for _, entry := range dst.Entries {
+		total += entry.Category.Confidence
+	}
+	dst.Metadata.AvgConfidence = total / float64(len(dst.Entries))
 }
 
 func (i *Importer) extract(ctx context.Context, imagePaths []string, categories []string, rates []db.Rate, sessionID int64) (*ocr.OCRResponse, error) {
@@ -333,6 +362,23 @@ func (i *Importer) ConfirmDrafts(ctx context.Context, input ConfirmDraftsInput) 
 		return ConfirmResult{}, err
 	}
 	return ConfirmResult{Confirmed: confirmed, Skipped: skipped}, nil
+}
+
+func (i *Importer) DeleteDraft(ctx context.Context, sessionID, draftID int64) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	draft, err := i.Store.GetDraftEntry(draftID)
+	if err != nil {
+		return err
+	}
+	if draft.SessionID != sessionID {
+		return fmt.Errorf("draft %d does not belong to session %d", draftID, sessionID)
+	}
+	if draft.Confirmed {
+		return fmt.Errorf("draft %d is already confirmed", draftID)
+	}
+	return i.Store.DeleteDraftEntry(sessionID, draftID)
 }
 
 func (i *Importer) DeleteSession(ctx context.Context, sessionID int64) error {

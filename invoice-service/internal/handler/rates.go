@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
+
+	"invoice-app/internal/db"
 )
 
 type RateHandlers struct {
@@ -24,16 +27,17 @@ func (h *RateHandlers) Routes(mux *http.ServeMux) {
 }
 
 func (h *RateHandlers) ratesPage(w http.ResponseWriter, r *http.Request) {
-	store := StoreFromContext(r.Context())
-	rates, err := store.ListRates()
+	activeOnly := activeRatesOnly(r)
+	rates, err := listRates(r, activeOnly)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list rates", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	h.renderer.Page(w, r, http.StatusOK, "rates.html", RatesPageData{
-		Rates:  rates,
-		Notice: noticeFromRequest(r),
+		Rates:      rates,
+		Notice:     noticeFromRequest(r),
+		ActiveOnly: activeOnly,
 	}, "rates_table.html")
 }
 
@@ -104,13 +108,14 @@ func (h *RateHandlers) deleteRate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rates, err := store.ListRates()
+	activeOnly := activeRatesOnly(r)
+	rates, err := listRates(r, activeOnly)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list rates after delete", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	h.renderer.Partial(w, http.StatusOK, "rates_table", RatesPageData{Rates: rates, Notice: fmt.Sprintf("Rate %d deleted", id)}, "rates_table.html")
+	h.renderer.Partial(w, http.StatusOK, "rates_table", RatesPageData{Rates: rates, Notice: fmt.Sprintf("Rate %d deleted", id), ActiveOnly: activeOnly}, "rates_table.html")
 }
 
 func (h *RateHandlers) editRateForm(w http.ResponseWriter, r *http.Request) {
@@ -182,22 +187,36 @@ func (h *RateHandlers) updateRate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rates, err := store.ListRates()
+	activeOnly := activeRatesOnly(r)
+	rates, err := listRates(r, activeOnly)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list rates after update", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	h.renderer.Partial(w, http.StatusOK, "rates_table", RatesPageData{Rates: rates, Notice: fmt.Sprintf("Rate %d updated", id)}, "rates_table.html")
+	h.renderer.Partial(w, http.StatusOK, "rates_table", RatesPageData{Rates: rates, Notice: fmt.Sprintf("Rate %d updated", id), ActiveOnly: activeOnly}, "rates_table.html")
 }
 
 func (h *RateHandlers) ratesTable(w http.ResponseWriter, r *http.Request) {
-	store := StoreFromContext(r.Context())
-	rates, err := store.ListRates()
+	activeOnly := activeRatesOnly(r)
+	rates, err := listRates(r, activeOnly)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list rates table", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	h.renderer.Partial(w, http.StatusOK, "rates_table", RatesPageData{Rates: rates}, "rates_table.html")
+	h.renderer.Partial(w, http.StatusOK, "rates_table", RatesPageData{Rates: rates, ActiveOnly: activeOnly}, "rates_table.html")
+}
+
+func activeRatesOnly(r *http.Request) bool {
+	value := strings.ToLower(strings.TrimSpace(r.FormValue("active_only")))
+	return value == "1" || value == "on" || value == "true" || value == "yes"
+}
+
+func listRates(r *http.Request, activeOnly bool) ([]db.Rate, error) {
+	store := StoreFromContext(r.Context())
+	if !activeOnly {
+		return store.ListRates()
+	}
+	return store.ListActiveRates(time.Now().Format("2006-01-02"))
 }

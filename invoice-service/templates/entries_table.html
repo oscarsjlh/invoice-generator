@@ -1,5 +1,28 @@
 {{define "entries_table"}}
 <div id="entries-table">
+  {{if .Notice}}
+  <article class="notice">{{.Notice}}</article>
+  {{end}}
+
+  <form method="get" action="/entries" hx-get="/entries/table" hx-target="#entries-table" hx-swap="outerHTML" style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: end;">
+    <label style="margin: 0;">
+      Year
+      <select name="year" onchange="this.form.requestSubmit()">
+        <option value="">All years</option>
+        {{range .Years}}<option value="{{.}}" {{selected $.SelectedYear .}}>{{.}}</option>{{end}}
+      </select>
+    </label>
+    <label style="margin: 0;">
+      Month
+      <select name="month" onchange="this.form.requestSubmit()">
+        <option value="">All months</option>
+        {{range .Months}}<option value="{{.}}" {{selected $.SelectedMonth .}}>{{monthName .}}</option>{{end}}
+      </select>
+    </label>
+    <button type="submit" class="secondary">Apply</button>
+    {{if or .SelectedYear .SelectedMonth}}<a href="/entries" hx-get="/entries/table" hx-target="#entries-table" hx-swap="outerHTML">Clear</a>{{end}}
+  </form>
+
   {{if .Entries}}
   <figure>
     <table>
@@ -21,8 +44,8 @@
           <td>{{if .Notes}}{{.Notes}}{{else}}<span class="muted">-</span>{{end}}</td>
           <td class="no-print">
             <div style="display: flex; gap: 0.25rem;">
-              <button type="button" class="secondary" hx-get="/entries/{{.ID}}/edit" hx-target="closest tr" hx-swap="outerHTML">Edit</button>
-              <button type="button" class="secondary" hx-post="/entries/{{.ID}}/delete" hx-target="#entries-table" hx-swap="outerHTML" hx-confirm="Delete this entry?">Delete</button>
+              <button type="button" class="secondary" hx-get="/entries/{{.ID}}/edit{{$.FilterQuery}}" hx-target="closest tr" hx-swap="outerHTML">Edit</button>
+              <button type="button" class="secondary" hx-post="/entries/{{.ID}}/delete{{$.FilterQuery}}" hx-target="#entries-table" hx-swap="outerHTML" hx-confirm="Delete this entry?">Delete</button>
             </div>
           </td>
         </tr>
@@ -31,7 +54,7 @@
     </table>
   </figure>
   {{else}}
-  <p class="muted">No entries yet.</p>
+  <p class="muted">No entries match these filters.</p>
   {{end}}
 </div>
 {{end}}

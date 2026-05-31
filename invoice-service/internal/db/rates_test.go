@@ -2,6 +2,7 @@ package db
 
 import (
 	"testing"
+	"time"
 )
 
 func TestRateCRUD(t *testing.T) {
@@ -52,6 +53,51 @@ func TestListRates(t *testing.T) {
 	}
 	if rates[0].Category != "Consulting" || rates[1].Category != "Design" {
 		t.Errorf("rates not sorted correctly: %+v", rates)
+	}
+}
+
+func TestListActiveRates(t *testing.T) {
+	t.Parallel()
+	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
+
+	today := time.Now().Format("2006-01-02")
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+
+	if err := store.CreateRate("Active Open", yesterday, "", 150.00); err != nil {
+		t.Fatalf("CreateRate active open: %v", err)
+	}
+	if err := store.CreateRate("Active Ends Today", yesterday, today, 125.00); err != nil {
+		t.Fatalf("CreateRate active ends today: %v", err)
+	}
+	if err := store.CreateRate("Expired", yesterday, yesterday, 100.00); err != nil {
+		t.Fatalf("CreateRate expired: %v", err)
+	}
+	if err := store.CreateRate("Future", tomorrow, "", 175.00); err != nil {
+		t.Fatalf("CreateRate future: %v", err)
+	}
+
+	rates, err := store.ListActiveRates(today)
+	if err != nil {
+		t.Fatalf("ListActiveRates: %v", err)
+	}
+	if len(rates) != 2 {
+		t.Fatalf("expected 2 active rates, got %d: %+v", len(rates), rates)
+	}
+	categories := map[string]bool{}
+	for _, rate := range rates {
+		categories[rate.Category] = true
+	}
+	if !categories["Active Open"] || !categories["Active Ends Today"] {
+		t.Fatalf("expected active rates only, got %+v", rates)
+	}
+	if categories["Expired"] || categories["Future"] {
+		t.Fatalf("inactive rates were returned: %+v", rates)
 	}
 }
 

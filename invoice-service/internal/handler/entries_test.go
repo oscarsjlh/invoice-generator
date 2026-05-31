@@ -17,6 +17,7 @@ import (
 func TestCreateEntryValid(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
+	require.NoError(t, ta.store.CreateRate("Consulting", "2024-01-01", "", 150))
 
 	req := newFormRequest("/entries", urlencode(map[string]string{
 		"date":     "2024-03-15",
@@ -33,6 +34,37 @@ func TestCreateEntryValid(t *testing.T) {
 	resp := w.Result()
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
 	assert.Contains(t, resp.Header.Get("Location"), "/entries")
+}
+
+func TestCreateEntryUnknownCategoryWarns(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	require.NoError(t, ta.store.CreateRate("Consulting", "2024-01-01", "", 150))
+
+	req := newFormRequest("/entries", urlencode(map[string]string{
+		"date":     "2024-03-15",
+		"category": "Typo",
+		"hours":    "4.5",
+		"year":     "2024",
+		"month":    "03",
+	}))
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	ta.eh.createEntry(w, req)
+
+	resp := w.Result()
+	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
+	location := resp.Header.Get("Location")
+	assert.Contains(t, location, "/entries?")
+	assert.Contains(t, location, "year=2024")
+	assert.Contains(t, location, "month=03")
+	assert.Contains(t, location, "does+not+exist")
+
+	entries, err := ta.store.ListEntries()
+	require.NoError(t, err)
+	assert.Empty(t, entries)
 }
 
 func TestCreateEntryMissingCategory(t *testing.T) {
@@ -91,6 +123,36 @@ func TestEntriesTableReturnsPartial(t *testing.T) {
 	assert.Contains(t, string(body), "Consulting")
 }
 
+func TestEntriesTableRespectsYearMonthFilters(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+
+	require.NoError(t, ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, ""))
+	require.NoError(t, ta.store.CreateEntry("2024-04-15", "Design", 2.0, ""))
+	require.NoError(t, ta.store.CreateEntry("2023-03-15", "Research", 1.0, ""))
+
+	req := httptest.NewRequest("GET", "/entries/table?year=2024&month=03", nil)
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	ta.eh.entriesTable(w, req)
+
+	resp := w.Result()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	html := string(body)
+	assert.Contains(t, html, "Consulting")
+	assert.NotContains(t, html, "Design")
+	assert.NotContains(t, html, "Research")
+	assert.Contains(t, html, `name="year"`)
+	assert.Contains(t, html, `value="2024" selected`)
+	assert.Contains(t, html, `name="month"`)
+	assert.Contains(t, html, `value="03" selected`)
+	assert.Contains(t, html, `hx-get="/entries/1/edit?month=03&amp;year=2024"`)
+	assert.Contains(t, html, `hx-post="/entries/1/delete?month=03&amp;year=2024"`)
+}
+
 func TestDeleteEntryRedirects(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
@@ -115,8 +177,9 @@ func TestEditEntryFormReturnsPartial(t *testing.T) {
 	ta := newTestApp(t)
 
 	require.NoError(t, ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, "Client meeting"))
+	require.NoError(t, ta.store.CreateRate("Consulting", "2024-01-01", "", 150))
 
-	req := httptest.NewRequest("GET", "/entries/1/edit", nil)
+	req := httptest.NewRequest("GET", "/entries/1/edit?year=2024&month=03", nil)
 	req.SetPathValue("id", "1")
 	ctx := WithTestStore(req.Context(), ta.store)
 	req = req.WithContext(ctx)
@@ -128,6 +191,8 @@ func TestEditEntryFormReturnsPartial(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	body, _ := io.ReadAll(resp.Body)
 	assert.Contains(t, string(body), "Consulting")
+	assert.Contains(t, string(body), `hx-post="/entries/1?month=03&amp;year=2024"`)
+	assert.Contains(t, string(body), `hx-get="/entries/table?month=03&amp;year=2024"`)
 }
 
 func TestEditEntryFormNotFound(t *testing.T) {
@@ -151,6 +216,7 @@ func TestUpdateEntrySuccess(t *testing.T) {
 	ta := newTestApp(t)
 
 	require.NoError(t, ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, ""))
+	require.NoError(t, ta.store.CreateRate("Design", "2024-01-01", "", 120))
 
 	req := newFormRequest("/entries/1", urlencode(map[string]string{
 		"date":     "2024-04-01",
@@ -170,6 +236,38 @@ func TestUpdateEntrySuccess(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	assert.Contains(t, string(body), "Design")
 	assert.Contains(t, string(body), "Updated")
+}
+
+func TestUpdateEntryUnknownCategoryWarns(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+
+	require.NoError(t, ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, ""))
+	require.NoError(t, ta.store.CreateRate("Consulting", "2024-01-01", "", 150))
+
+	req := newFormRequest("/entries/1?year=2024&month=03", urlencode(map[string]string{
+		"date":     "2024-03-16",
+		"category": "Typo",
+		"hours":    "3.0",
+	}))
+	req.SetPathValue("id", "1")
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	ta.eh.updateEntry(w, req)
+
+	resp := w.Result()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	html := string(body)
+	assert.Contains(t, html, `Category &#34;Typo&#34; does not exist`)
+	assert.Contains(t, html, "Consulting")
+	assert.NotContains(t, html, ">Typo<")
+
+	entry, err := ta.store.GetEntry(1)
+	require.NoError(t, err)
+	assert.Equal(t, "Consulting", entry.Category)
 }
 
 func TestUpdateEntryMissingCategory(t *testing.T) {
