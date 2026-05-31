@@ -76,11 +76,12 @@ For best OCR results with handwritten timesheet pages:
 1. **Lighting**: Good even lighting, no strong shadows
 2. **Orientation**: Pages should be roughly upright (the system does basic scaling but not rotation correction)
 3. **Contrast**: Dark ink on light paper works best
-4. **Format**: JPEG or PNG, captured at reasonable resolution (smartphone photos work well)
+4. **Format**: JPEG, PNG, HEIC, or HEIF, captured at reasonable resolution (smartphone photos work well)
 
 The system preprocesses images by:
 - Resizing to max 2048px on the longest dimension
-- Validating JPEG/PNG format
+- Validating JPEG, PNG, HEIC, and HEIF formats
+- Sending one OCR service request per image before combining the extracted draft entries
 
 ## Workflow
 

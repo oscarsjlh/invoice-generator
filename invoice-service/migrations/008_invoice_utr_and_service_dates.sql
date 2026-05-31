@@ -1,0 +1,3 @@
+ALTER TABLE invoices ADD COLUMN business_utr TEXT NOT NULL DEFAULT '';
+ALTER TABLE invoices ADD COLUMN show_payment_due INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE invoice_lines ADD COLUMN service_dates TEXT NOT NULL DEFAULT '';

@@ -53,6 +53,8 @@ func (h *SettingsHandlers) saveSettings(w http.ResponseWriter, r *http.Request) 
 		AccountName:        strings.TrimSpace(r.FormValue("account_name")),
 		AccountNumber:      strings.TrimSpace(r.FormValue("account_number")),
 		SortCode:           strings.TrimSpace(r.FormValue("sort_code")),
+		UTR:                strings.TrimSpace(r.FormValue("utr")),
+		ShowPaymentDue:     r.FormValue("show_payment_due") == "on",
 		PaymentTerms:       strings.TrimSpace(r.FormValue("payment_terms")),
 		DefaultDueDays:     dueDays,
 		CustomerName:       strings.TrimSpace(r.FormValue("customer_name")),

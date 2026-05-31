@@ -25,9 +25,9 @@ func (s *tracedStore) ListEntries() ([]db.Entry, error) {
 	return traceDB(s.ctx, "entries.list", s.next.ListEntries)
 }
 
-func (s *tracedStore) ListEntriesFiltered(year, month string) ([]db.Entry, error) {
+func (s *tracedStore) ListEntriesFiltered(year, month, rate string) ([]db.Entry, error) {
 	return traceDB(s.ctx, "entries.filtered.list", func() ([]db.Entry, error) {
-		return s.next.ListEntriesFiltered(year, month)
+		return s.next.ListEntriesFiltered(year, month, rate)
 	})
 }
 
@@ -123,15 +123,27 @@ func (s *tracedStore) CountUnratedEntries(month, category string) (int, error) {
 	})
 }
 
-func (s *tracedStore) GenerateInvoice(month, category, invoiceDate string, dueDays int, settings db.Settings) (int64, error) {
+func (s *tracedStore) CountUnratedEntriesFiltered(year, month string) (int, error) {
+	return traceDB(s.ctx, "entries.unrated.count_filtered", func() (int, error) {
+		return s.next.CountUnratedEntriesFiltered(year, month)
+	})
+}
+
+func (s *tracedStore) GenerateInvoice(month, category, invoiceDate string, dueDays int, invoiceNumber string, settings db.Settings) (int64, error) {
 	return traceDB(s.ctx, "invoices.generate", func() (int64, error) {
-		return s.next.GenerateInvoice(month, category, invoiceDate, dueDays, settings)
+		return s.next.GenerateInvoice(month, category, invoiceDate, dueDays, invoiceNumber, settings)
 	})
 }
 
 func (s *tracedStore) GetInvoice(id int64) (db.Invoice, error) {
 	return traceDB(s.ctx, "invoices.get", func() (db.Invoice, error) {
 		return s.next.GetInvoice(id)
+	})
+}
+
+func (s *tracedStore) DeleteInvoice(id int64) error {
+	return traceDBErr(s.ctx, "invoices.delete", func() error {
+		return s.next.DeleteInvoice(id)
 	})
 }
 

@@ -28,6 +28,12 @@ func (a *App) dashboard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+	missingRateCount, err := store.CountUnratedEntriesFiltered(year, month)
+	if err != nil {
+		LoggerFromContext(r.Context()).Error("count missing rates for dashboard", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	invoices, err := store.ListInvoices()
 	if err != nil {
@@ -40,14 +46,15 @@ func (a *App) dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.renderer.Page(w, r, http.StatusOK, "dashboard.html", DashboardPageData{
-		Summary:        summary,
-		RecentInvoices: invoices,
-		Years:          years,
-		Months:         months,
-		SelectedYear:   year,
-		SelectedMonth:  month,
-		TotalHours:     totalHours,
-		TotalAmount:    totalAmount,
-		Notice:         noticeFromRequest(r),
+		Summary:          summary,
+		RecentInvoices:   invoices,
+		Years:            years,
+		Months:           months,
+		SelectedYear:     year,
+		SelectedMonth:    month,
+		TotalHours:       totalHours,
+		TotalAmount:      totalAmount,
+		MissingRateCount: missingRateCount,
+		Notice:           noticeFromRequest(r),
 	})
 }

@@ -5,25 +5,41 @@ import (
 )
 
 func (s *Store) ListEntries() ([]Entry, error) {
-	return s.ListEntriesFiltered("", "")
+	return s.ListEntriesFiltered("", "", "")
 }
 
-func (s *Store) ListEntriesFiltered(year, month string) ([]Entry, error) {
+func (s *Store) ListEntriesFiltered(year, month, rate string) ([]Entry, error) {
 	query := `
-		SELECT id, date, category, hours, COALESCE(notes, '')
-		FROM entries
+		SELECT
+			e.id,
+			e.date,
+			e.category,
+			e.hours,
+			COALESCE(e.notes, ''),
+			NOT EXISTS (
+				SELECT 1
+				FROM rates r
+				WHERE r.category = e.category
+				  AND e.date >= r.start_date
+				  AND (r.end_date = '' OR e.date <= r.end_date)
+			) AS missing_rate
+		FROM entries e
 		WHERE 1=1
 	`
 	args := []any{}
 	if year != "" {
-		query += ` AND strftime('%Y', date) = ?`
+		query += ` AND strftime('%Y', e.date) = ?`
 		args = append(args, year)
 	}
 	if month != "" {
-		query += ` AND strftime('%m', date) = ?`
+		query += ` AND strftime('%m', e.date) = ?`
 		args = append(args, month)
 	}
-	query += ` ORDER BY date DESC, id DESC`
+	if rate != "" {
+		query += ` AND e.category = ?`
+		args = append(args, rate)
+	}
+	query += ` ORDER BY e.date DESC, e.id DESC`
 
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
@@ -36,7 +52,7 @@ func (s *Store) ListEntriesFiltered(year, month string) ([]Entry, error) {
 	entries := []Entry{}
 	for rows.Next() {
 		var entry Entry
-		if err := rows.Scan(&entry.ID, &entry.Date, &entry.Category, &entry.Hours, &entry.Notes); err != nil {
+		if err := rows.Scan(&entry.ID, &entry.Date, &entry.Category, &entry.Hours, &entry.Notes, &entry.MissingRate); err != nil {
 			return nil, fmt.Errorf("scan entry: %w", err)
 		}
 		entries = append(entries, entry)
@@ -62,8 +78,24 @@ func (s *Store) CreateEntry(date, category string, hours float64, notes string) 
 func (s *Store) GetEntry(id int64) (Entry, error) {
 	var entry Entry
 	err := s.db.QueryRow(
-		`SELECT id, date, category, hours, COALESCE(notes, '') FROM entries WHERE id = ?`, id,
-	).Scan(&entry.ID, &entry.Date, &entry.Category, &entry.Hours, &entry.Notes)
+		`
+		SELECT
+			e.id,
+			e.date,
+			e.category,
+			e.hours,
+			COALESCE(e.notes, ''),
+			NOT EXISTS (
+				SELECT 1
+				FROM rates r
+				WHERE r.category = e.category
+				  AND e.date >= r.start_date
+				  AND (r.end_date = '' OR e.date <= r.end_date)
+			) AS missing_rate
+		FROM entries e
+		WHERE e.id = ?`,
+		id,
+	).Scan(&entry.ID, &entry.Date, &entry.Category, &entry.Hours, &entry.Notes, &entry.MissingRate)
 	if err != nil {
 		return Entry{}, fmt.Errorf("get entry: %w", err)
 	}

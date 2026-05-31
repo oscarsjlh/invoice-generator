@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func GenerateInvoicePDF(workDir string, templateBytes []byte, typContent string) ([]byte, error) {
@@ -68,13 +69,13 @@ func findTypst() string {
 func FormatInvoiceTyp(invoice InvoiceData) string {
 	items := ""
 	for _, item := range invoice.Items {
-		hours := float64(item.DurMin) / 60
 		items += fmt.Sprintf(`    (
 	      description: "%s",
+	      service-dates: "%s",
 	      dur-min: %d,
 	      hourly-rate: %.2f,
 	    ),
-`, escape(fmt.Sprintf("%s (%.2fh @ £%.2f/hr)", item.Description, hours, item.HourlyRate)), item.DurMin, item.HourlyRate)
+`, escape(item.Description), escape(formatServiceDates(item.ServiceDates)), item.DurMin, item.HourlyRate)
 	}
 
 	return fmt.Sprintf(`#import "invoice-maker.typ": *
@@ -93,6 +94,8 @@ func FormatInvoiceTyp(invoice InvoiceData) string {
     bank: "%s",
     account-name: "%s",
     sort-code: "%s",
+    utr: "%s",
+    show-payment-due: %t,
     account-number: "%s",
     payment-terms: "%s",
     address: (
@@ -126,6 +129,8 @@ func FormatInvoiceTyp(invoice InvoiceData) string {
 		escape(invoice.BankName),
 		escape(invoice.AccountName),
 		escape(invoice.SortCode),
+		escape(invoice.UTR),
+		invoice.ShowPaymentDue,
 		escape(invoice.AccountNumber),
 		escape(invoice.PaymentTerms),
 		escape(invoice.City),
@@ -178,6 +183,8 @@ type InvoiceData struct {
 	BankName           string
 	AccountName        string
 	SortCode           string
+	UTR                string
+	ShowPaymentDue     bool
 	AccountNumber      string
 	PaymentTerms       string
 	CustomerName       string
@@ -219,7 +226,52 @@ func parseAddress(address string) (street, city, postalCode string) {
 }
 
 type ItemData struct {
-	Description string
-	DurMin      int
-	HourlyRate  float64
+	Description  string
+	DurMin       int
+	HourlyRate   float64
+	ServiceDates []string
+}
+
+func formatServiceDates(dates []string) string {
+	if len(dates) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(dates))
+	for _, date := range dates {
+		parsed, err := time.Parse("2006-01-02", strings.TrimSpace(date))
+		if err != nil {
+			parts = append(parts, strings.TrimSpace(date))
+			continue
+		}
+		parts = append(parts, ordinalDay(parsed.Day()))
+	}
+	return joinNatural(parts)
+}
+
+func ordinalDay(day int) string {
+	suffix := "th"
+	if day%100 < 11 || day%100 > 13 {
+		switch day % 10 {
+		case 1:
+			suffix = "st"
+		case 2:
+			suffix = "nd"
+		case 3:
+			suffix = "rd"
+		}
+	}
+	return fmt.Sprintf("%d%s", day, suffix)
+}
+
+func joinNatural(parts []string) string {
+	switch len(parts) {
+	case 0:
+		return ""
+	case 1:
+		return parts[0]
+	case 2:
+		return parts[0] + " and " + parts[1]
+	default:
+		return strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
+	}
 }

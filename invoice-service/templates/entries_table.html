@@ -19,8 +19,15 @@
         {{range .Months}}<option value="{{.}}" {{selected $.SelectedMonth .}}>{{monthName .}}</option>{{end}}
       </select>
     </label>
+    <label style="margin: 0;">
+      Rate
+      <select name="rate" onchange="this.form.requestSubmit()">
+        <option value="">All rates</option>
+        {{range .Categories}}<option value="{{.}}" {{selected $.SelectedRate .}}>{{.}}</option>{{end}}
+      </select>
+    </label>
     <button type="submit" class="secondary">Apply</button>
-    {{if or .SelectedYear .SelectedMonth}}<a href="/entries" hx-get="/entries/table" hx-target="#entries-table" hx-swap="outerHTML">Clear</a>{{end}}
+    {{if or .SelectedYear .SelectedMonth .SelectedRate}}<a href="/entries" hx-get="/entries/table" hx-target="#entries-table" hx-swap="outerHTML">Clear</a>{{end}}
   </form>
 
   {{if .Entries}}
@@ -39,7 +46,12 @@
         {{range .Entries}}
         <tr>
           <td>{{dateLabel .Date}}</td>
-          <td>{{.Category}}</td>
+          <td class="{{if .MissingRate}}missing-rate-cell{{end}}">
+            <div>{{.Category}}</div>
+            {{if .MissingRate}}
+            <mark class="warning">Rate does not exist</mark>
+            {{end}}
+          </td>
           <td>{{money .Hours}}</td>
           <td>{{if .Notes}}{{.Notes}}{{else}}<span class="muted">-</span>{{end}}</td>
           <td class="no-print">

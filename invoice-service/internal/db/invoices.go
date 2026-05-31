@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -194,7 +195,36 @@ func (s *Store) CountUnratedEntries(month, category string) (int, error) {
 	return count, nil
 }
 
-func (s *Store) GenerateInvoice(month, category, invoiceDate string, dueDays int, settings Settings) (int64, error) {
+func (s *Store) CountUnratedEntriesFiltered(year, month string) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM entries e
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM rates r
+			WHERE r.category = e.category
+			  AND e.date >= r.start_date
+			  AND (r.end_date = '' OR e.date <= r.end_date)
+		)
+	`
+	args := []any{}
+	if year != "" {
+		query += ` AND strftime('%Y', e.date) = ?`
+		args = append(args, year)
+	}
+	if month != "" {
+		query += ` AND strftime('%m', e.date) = ?`
+		args = append(args, month)
+	}
+
+	var count int
+	if err := s.db.QueryRow(query, args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count filtered unrated entries: %w", err)
+	}
+	return count, nil
+}
+
+func (s *Store) GenerateInvoice(month, category, invoiceDate string, dueDays int, invoiceNumber string, settings Settings) (int64, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("begin invoice transaction: %w", err)
@@ -225,9 +255,16 @@ func (s *Store) GenerateInvoice(month, category, invoiceDate string, dueDays int
 		return 0, fmt.Errorf("no invoiceable entries found for %s", month)
 	}
 
-	invoiceNumber, err := nextInvoiceNumber(tx, month, category)
-	if err != nil {
+	invoiceNumber = strings.TrimSpace(invoiceNumber)
+	if invoiceNumber == "" {
+		invoiceNumber, err = nextInvoiceNumber(tx, month, category)
+		if err != nil {
+			return 0, err
+		}
+	} else if exists, err := invoiceNumberExists(tx, invoiceNumber); err != nil {
 		return 0, err
+	} else if exists {
+		return 0, fmt.Errorf("invoice number %q already exists", invoiceNumber)
 	}
 
 	result, err := tx.Exec(`
@@ -245,6 +282,8 @@ func (s *Store) GenerateInvoice(month, category, invoiceDate string, dueDays int
 			account_name,
 			account_number,
 			sort_code,
+			business_utr,
+			show_payment_due,
 			payment_terms,
 			customer_name,
 			customer_title,
@@ -252,7 +291,7 @@ func (s *Store) GenerateInvoice(month, category, invoiceDate string, dueDays int
 			customer_address,
 			customer_postal_code,
 			customer_city
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		invoiceNumber,
 		month,
@@ -267,6 +306,8 @@ func (s *Store) GenerateInvoice(month, category, invoiceDate string, dueDays int
 		settings.AccountName,
 		settings.AccountNumber,
 		settings.SortCode,
+		settings.UTR,
+		settings.ShowPaymentDue,
 		settings.PaymentTerms,
 		settings.CustomerName,
 		settings.CustomerTitle,
@@ -286,9 +327,9 @@ func (s *Store) GenerateInvoice(month, category, invoiceDate string, dueDays int
 
 	for _, line := range lines {
 		if _, err := tx.Exec(`
-			INSERT INTO invoice_lines (invoice_id, category, hours, rate, amount)
-			VALUES (?, ?, ?, ?, ?)
-		`, invoiceID, line.Category, line.Hours, line.Rate, line.Amount); err != nil {
+			INSERT INTO invoice_lines (invoice_id, category, hours, rate, amount, service_dates)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, invoiceID, line.Category, line.Hours, line.Rate, line.Amount, strings.Join(line.ServiceDates, ",")); err != nil {
 			return 0, fmt.Errorf("insert invoice line: %w", err)
 		}
 	}
@@ -328,7 +369,8 @@ func queryInvoiceLinesTx(tx *sql.Tx, month, category string) ([]InvoiceLine, flo
 			e.category,
 			ROUND(SUM(e.hours), 2) AS hours,
 			r.rate,
-			ROUND(SUM(e.hours * r.rate), 2) AS amount
+			ROUND(SUM(e.hours * r.rate), 2) AS amount,
+			GROUP_CONCAT(e.date, ',') AS service_dates
 		FROM entries e
 		JOIN rates r
 			ON e.category = r.category
@@ -350,9 +392,11 @@ func queryInvoiceLinesTx(tx *sql.Tx, month, category string) ([]InvoiceLine, flo
 	var total float64
 	for rows.Next() {
 		var line InvoiceLine
-		if err := rows.Scan(&line.Category, &line.Hours, &line.Rate, &line.Amount); err != nil {
+		var serviceDates string
+		if err := rows.Scan(&line.Category, &line.Hours, &line.Rate, &line.Amount, &serviceDates); err != nil {
 			return nil, 0, fmt.Errorf("scan invoice line: %w", err)
 		}
+		line.ServiceDates = splitServiceDates(serviceDates)
 		total += line.Amount
 		lines = append(lines, line)
 	}
@@ -366,6 +410,7 @@ func queryInvoiceLinesTx(tx *sql.Tx, month, category string) ([]InvoiceLine, flo
 
 func (s *Store) GetInvoice(id int64) (Invoice, error) {
 	var invoice Invoice
+	var showPaymentDue int
 	row := s.db.QueryRow(`
 		SELECT
 			id,
@@ -382,6 +427,8 @@ func (s *Store) GetInvoice(id int64) (Invoice, error) {
 			account_name,
 			account_number,
 			sort_code,
+			business_utr,
+			show_payment_due,
 			payment_terms,
 			customer_name,
 			customer_title,
@@ -408,6 +455,8 @@ func (s *Store) GetInvoice(id int64) (Invoice, error) {
 		&invoice.AccountName,
 		&invoice.AccountNumber,
 		&invoice.SortCode,
+		&invoice.UTR,
+		&showPaymentDue,
 		&invoice.PaymentTerms,
 		&invoice.CustomerName,
 		&invoice.CustomerTitle,
@@ -421,9 +470,10 @@ func (s *Store) GetInvoice(id int64) (Invoice, error) {
 		}
 		return Invoice{}, fmt.Errorf("get invoice: %w", err)
 	}
+	invoice.ShowPaymentDue = showPaymentDue != 0
 
 	rows, err := s.db.Query(`
-		SELECT id, category, hours, rate, amount
+		SELECT id, category, hours, rate, amount, service_dates
 		FROM invoice_lines
 		WHERE invoice_id = ?
 		ORDER BY category ASC, id ASC
@@ -437,13 +487,30 @@ func (s *Store) GetInvoice(id int64) (Invoice, error) {
 
 	for rows.Next() {
 		var line InvoiceLine
-		if err := rows.Scan(&line.ID, &line.Category, &line.Hours, &line.Rate, &line.Amount); err != nil {
+		var serviceDates string
+		if err := rows.Scan(&line.ID, &line.Category, &line.Hours, &line.Rate, &line.Amount, &serviceDates); err != nil {
 			return Invoice{}, fmt.Errorf("scan invoice line: %w", err)
 		}
+		line.ServiceDates = splitServiceDates(serviceDates)
 		invoice.Lines = append(invoice.Lines, line)
 	}
 
 	return invoice, rows.Err()
+}
+
+func (s *Store) DeleteInvoice(id int64) error {
+	result, err := s.db.Exec(`DELETE FROM invoices WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete invoice: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete invoice rows affected: %w", err)
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func nextInvoiceNumber(tx *sql.Tx, month, category string) (string, error) {
@@ -464,6 +531,33 @@ func nextInvoiceNumber(tx *sql.Tx, month, category string) (string, error) {
 	}
 
 	return "", fmt.Errorf("could not allocate invoice number for %s/%s", month, category)
+}
+
+func invoiceNumberExists(tx *sql.Tx, invoiceNumber string) (bool, error) {
+	var exists int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM invoices WHERE invoice_number = ?`, invoiceNumber).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check invoice number: %w", err)
+	}
+	return exists > 0, nil
+}
+
+func splitServiceDates(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	dates := strings.Split(value, ",")
+	clean := dates[:0]
+	seen := map[string]bool{}
+	for _, date := range dates {
+		date = strings.TrimSpace(date)
+		if date == "" || seen[date] {
+			continue
+		}
+		seen[date] = true
+		clean = append(clean, date)
+	}
+	sort.Strings(clean)
+	return clean
 }
 
 func invoiceSlug(category string) string {

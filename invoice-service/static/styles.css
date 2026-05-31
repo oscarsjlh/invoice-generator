@@ -266,6 +266,12 @@ article.notice {
   box-shadow: none;
 }
 
+article.notice.warning {
+  background: var(--warning-bg);
+  border-color: var(--warning-text);
+  color: var(--warning-text);
+}
+
 .auth-card {
   max-width: 30rem;
   margin: 4rem auto;
@@ -344,6 +350,12 @@ tbody td {
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:nth-child(even) { background: var(--bg-stripe); }
 tbody tr:hover { background: var(--bg-hover); }
+
+td.missing-rate-cell {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  font-weight: 600;
+}
 
 tfoot {
   border-top: 2px solid var(--border-strong);

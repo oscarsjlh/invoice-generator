@@ -11,7 +11,7 @@ func (s *Store) LoadSettings() (Settings, error) {
 		_ = rows.Close()
 	}()
 
-	settings := Settings{DefaultDueDays: 30}
+	settings := Settings{DefaultDueDays: 30, ShowPaymentDue: true}
 	for rows.Next() {
 		var key string
 		var value string
@@ -31,6 +31,10 @@ func (s *Store) LoadSettings() (Settings, error) {
 			settings.AccountNumber = value
 		case "sort_code":
 			settings.SortCode = value
+		case "utr":
+			settings.UTR = value
+		case "show_payment_due":
+			settings.ShowPaymentDue = value != "false" && value != "0"
 		case "payment_terms":
 			settings.PaymentTerms = value
 		case "default_due_days":
@@ -75,6 +79,8 @@ func (s *Store) SaveSettings(settings Settings) error {
 		"account_name":         settings.AccountName,
 		"account_number":       settings.AccountNumber,
 		"sort_code":            settings.SortCode,
+		"utr":                  settings.UTR,
+		"show_payment_due":     formatBoolSetting(settings.ShowPaymentDue),
 		"payment_terms":        settings.PaymentTerms,
 		"default_due_days":     fmt.Sprintf("%d", settings.DefaultDueDays),
 		"customer_name":        settings.CustomerName,
@@ -98,4 +104,11 @@ func (s *Store) SaveSettings(settings Settings) error {
 		return fmt.Errorf("commit settings: %w", err)
 	}
 	return nil
+}
+
+func formatBoolSetting(value bool) string {
+	if value {
+		return "true"
+	}
+	return "false"
 }

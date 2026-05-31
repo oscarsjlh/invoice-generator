@@ -4,7 +4,7 @@ import "database/sql"
 
 type EntryStore interface {
 	ListEntries() ([]Entry, error)
-	ListEntriesFiltered(year, month string) ([]Entry, error)
+	ListEntriesFiltered(year, month, rate string) ([]Entry, error)
 	CreateEntry(date, category string, hours float64, notes string) error
 	GetEntry(id int64) (Entry, error)
 	UpdateEntry(id int64, date, category string, hours float64, notes string) error
@@ -27,8 +27,10 @@ type InvoiceStore interface {
 	FilteredSummary(year, month string) ([]MonthlySummary, float64, float64, error)
 	ListInvoices() ([]InvoiceSummary, error)
 	CountUnratedEntries(month, category string) (int, error)
-	GenerateInvoice(month, category, invoiceDate string, dueDays int, settings Settings) (int64, error)
+	CountUnratedEntriesFiltered(year, month string) (int, error)
+	GenerateInvoice(month, category, invoiceDate string, dueDays int, invoiceNumber string, settings Settings) (int64, error)
 	GetInvoice(id int64) (Invoice, error)
+	DeleteInvoice(id int64) error
 }
 
 type CategoryStore interface {

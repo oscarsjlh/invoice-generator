@@ -127,14 +127,35 @@ func (a *AuthDB) Migrate(dir string) error {
 		}
 
 		statements := splitStatements(string(contents))
-		for i, stmt := range statements {
-			stmt = strings.TrimSpace(stmt)
-			if stmt == "" {
-				continue
+
+		tx, err := a.db.Begin()
+		if err != nil {
+			return fmt.Errorf("begin transaction for migration %s: %w", filename, err)
+		}
+
+		txErr := func() error {
+			for i, stmt := range statements {
+				stmt = strings.TrimSpace(stmt)
+				if stmt == "" {
+					continue
+				}
+				if _, err := tx.Exec(stmt); err != nil {
+					if isDuplicateColumnError(err) && strings.HasPrefix(strings.ToUpper(stmt), "ALTER TABLE") {
+						continue
+					}
+					return fmt.Errorf("run migration %s statement %d: %w", filename, i+1, err)
+				}
 			}
-			if _, err := a.db.Exec(stmt); err != nil {
-				return fmt.Errorf("run migration %s statement %d: %w", filename, i+1, err)
-			}
+			return nil
+		}()
+
+		if txErr != nil {
+			_ = tx.Rollback()
+			return txErr
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit migration %s: %w", filename, err)
 		}
 
 		if _, err := a.db.Exec(`INSERT INTO schema_migrations (filename) VALUES (?)`, filename); err != nil {

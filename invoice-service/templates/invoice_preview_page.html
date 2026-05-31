@@ -12,6 +12,10 @@
     <input type="hidden" name="csrf_token" value="">
     <button type="submit" class="secondary">Send to Customer</button>
   </form>
+  <form method="post" action="/invoices/{{.Invoice.ID}}/delete" class="inline-form" onsubmit="return confirm('Delete this invoice?');">
+    <input type="hidden" name="csrf_token" value="">
+    <button type="submit" class="secondary">Delete</button>
+  </form>
   <a role="button" class="secondary" href="#" onclick="window.print(); return false;">Print</a>
 </div>
 

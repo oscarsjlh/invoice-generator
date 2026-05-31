@@ -120,7 +120,7 @@ func TestListEntriesFilteredByYearAndMonth(t *testing.T) {
 		t.Fatalf("CreateEntry 3: %v", err)
 	}
 
-	entries, err := store.ListEntriesFiltered("2024", "03")
+	entries, err := store.ListEntriesFiltered("2024", "03", "")
 	if err != nil {
 		t.Fatalf("ListEntriesFiltered: %v", err)
 	}
@@ -131,12 +131,113 @@ func TestListEntriesFilteredByYearAndMonth(t *testing.T) {
 		t.Errorf("filtered entry = %+v, want 2024-03-10 Design", entries[0])
 	}
 
-	yearEntries, err := store.ListEntriesFiltered("2024", "")
+	yearEntries, err := store.ListEntriesFiltered("2024", "", "")
 	if err != nil {
 		t.Fatalf("ListEntriesFiltered year: %v", err)
 	}
 	if len(yearEntries) != 2 {
 		t.Fatalf("expected 2 entries for 2024, got %d", len(yearEntries))
+	}
+}
+
+func TestListEntriesFilteredByRate(t *testing.T) {
+	t.Parallel()
+	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
+
+	if err := store.CreateEntry("2024-03-10", "Design", 2.0, ""); err != nil {
+		t.Fatalf("CreateEntry 1: %v", err)
+	}
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry 2: %v", err)
+	}
+	if err := store.CreateEntry("2024-04-15", "Consulting", 1.5, ""); err != nil {
+		t.Fatalf("CreateEntry 3: %v", err)
+	}
+
+	entries, err := store.ListEntriesFiltered("2024", "03", "Consulting")
+	if err != nil {
+		t.Fatalf("ListEntriesFiltered: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Date != "2024-03-15" || entries[0].Category != "Consulting" {
+		t.Errorf("filtered entry = %+v, want 2024-03-15 Consulting", entries[0])
+	}
+}
+
+func TestListEntriesMarksMissingRates(t *testing.T) {
+	t.Parallel()
+	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
+
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry missing rate: %v", err)
+	}
+	if err := store.CreateEntry("2024-04-15", "Consulting", 2, ""); err != nil {
+		t.Fatalf("CreateEntry rated: %v", err)
+	}
+	if err := store.CreateRate("Consulting", "2024-04-01", "", 150.00); err != nil {
+		t.Fatalf("CreateRate: %v", err)
+	}
+
+	entries, err := store.ListEntries()
+	if err != nil {
+		t.Fatalf("ListEntries: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].MissingRate {
+		t.Errorf("newer rated entry MissingRate = true, want false")
+	}
+	if !entries[1].MissingRate {
+		t.Errorf("older unrated entry MissingRate = false, want true")
+	}
+}
+
+func TestCountUnratedEntriesFiltered(t *testing.T) {
+	t.Parallel()
+	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
+
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry 1: %v", err)
+	}
+	if err := store.CreateEntry("2024-04-15", "Consulting", 2, ""); err != nil {
+		t.Fatalf("CreateEntry 2: %v", err)
+	}
+	if err := store.CreateRate("Consulting", "2024-04-01", "", 150.00); err != nil {
+		t.Fatalf("CreateRate: %v", err)
+	}
+
+	count, err := store.CountUnratedEntriesFiltered("2024", "03")
+	if err != nil {
+		t.Fatalf("CountUnratedEntriesFiltered: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("count = %d, want 1", count)
+	}
+
+	count, err = store.CountUnratedEntriesFiltered("2024", "04")
+	if err != nil {
+		t.Fatalf("CountUnratedEntriesFiltered: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("count = %d, want 0", count)
 	}
 }
 

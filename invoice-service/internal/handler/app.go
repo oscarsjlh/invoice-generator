@@ -59,16 +59,17 @@ type App struct {
 }
 
 type DashboardPageData struct {
-	Summary        []db.MonthlySummary
-	RecentInvoices []db.InvoiceSummary
-	Years          []string
-	Months         []string
-	SelectedYear   string
-	SelectedMonth  string
-	TotalHours     float64
-	TotalAmount    float64
-	Notice         string
-	User           *db.User
+	Summary          []db.MonthlySummary
+	RecentInvoices   []db.InvoiceSummary
+	Years            []string
+	Months           []string
+	SelectedYear     string
+	SelectedMonth    string
+	TotalHours       float64
+	TotalAmount      float64
+	MissingRateCount int
+	Notice           string
+	User             *db.User
 }
 
 type EntriesPageData struct {
@@ -78,6 +79,7 @@ type EntriesPageData struct {
 	Months        []string
 	SelectedYear  string
 	SelectedMonth string
+	SelectedRate  string
 	FilterQuery   string
 	Notice        string
 	Form          db.Entry

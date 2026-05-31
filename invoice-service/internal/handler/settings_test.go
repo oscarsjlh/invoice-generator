@@ -40,6 +40,8 @@ func TestSaveSettingsRedirects(t *testing.T) {
 	req := newFormRequest("/settings", urlencode(map[string]string{
 		"business_name":    "New Business Ltd",
 		"bank_name":        "New Bank",
+		"utr":              "1234567890",
+		"show_payment_due": "on",
 		"default_due_days": "60",
 		"customer_name":    "Jane Doe",
 		"customer_email":   "jane@example.com",
@@ -54,4 +56,9 @@ func TestSaveSettingsRedirects(t *testing.T) {
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
 	location := resp.Header.Get("Location")
 	assert.Contains(t, location, "/settings")
+
+	settings, err := ta.store.LoadSettings()
+	require.NoError(t, err)
+	assert.Equal(t, "1234567890", settings.UTR)
+	assert.True(t, settings.ShowPaymentDue)
 }

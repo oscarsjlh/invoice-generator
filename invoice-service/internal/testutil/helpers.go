@@ -105,6 +105,8 @@ func SampleSettings() db.Settings {
 		AccountName:        "Test Account",
 		AccountNumber:      "12345678",
 		SortCode:           "12-34-56",
+		UTR:                "1234567890",
+		ShowPaymentDue:     true,
 		PaymentTerms:       "Payment due within 30 days.",
 		DefaultDueDays:     30,
 		CustomerName:       "Test Customer",

@@ -20,6 +20,8 @@ func TestFormatInvoiceTyp(t *testing.T) {
 		BankName:           "Test Bank",
 		AccountName:        "Test Account",
 		SortCode:           "12-34-56",
+		UTR:                "1234567890",
+		ShowPaymentDue:     true,
 		AccountNumber:      "12345678",
 		PaymentTerms:       "Payment due within 30 days.",
 		CustomerName:       "John Doe",
@@ -28,7 +30,7 @@ func TestFormatInvoiceTyp(t *testing.T) {
 		CustomerCity:       "Manchester",
 		CustomerPostalCode: "M1 1AA",
 		Items: []ItemData{
-			{Description: "Consulting", DurMin: 270, HourlyRate: 150.00},
+			{Description: "Consulting", DurMin: 270, HourlyRate: 150.00, ServiceDates: []string{"2024-03-01", "2024-03-02", "2024-03-20"}},
 		},
 	}
 
@@ -45,6 +47,8 @@ func TestFormatInvoiceTyp(t *testing.T) {
 		"bank:", "Test Bank",
 		"account-name:", "Test Account",
 		"sort-code:", "12-34-56",
+		"utr:", "1234567890",
+		"show-payment-due:", "true",
 		"account-number:", "12345678",
 		"payment-terms:", "Payment due within 30 days.",
 		"city:", "London",
@@ -76,6 +80,12 @@ func TestFormatInvoiceTyp(t *testing.T) {
 	}
 	if !strings.Contains(output, "150.00") {
 		t.Error("FormatInvoiceTyp should include hourly rate")
+	}
+	if !strings.Contains(output, "1st, 2nd and 20th") {
+		t.Error("FormatInvoiceTyp should include formatted service dates")
+	}
+	if strings.Contains(output, "Consulting (4.50h") {
+		t.Error("FormatInvoiceTyp should not append hours and rate to the description")
 	}
 }
 
@@ -179,6 +189,20 @@ func TestEscape(t *testing.T) {
 				t.Errorf("escape(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestFormatServiceDates(t *testing.T) {
+	t.Parallel()
+
+	got := formatServiceDates([]string{"2024-03-01", "2024-03-02", "2024-03-20"})
+	if got != "1st, 2nd and 20th" {
+		t.Errorf("formatServiceDates = %q, want %q", got, "1st, 2nd and 20th")
+	}
+
+	got = formatServiceDates([]string{"2024-03-11", "2024-03-12", "2024-03-13"})
+	if got != "11th, 12th and 13th" {
+		t.Errorf("formatServiceDates = %q, want %q", got, "11th, 12th and 13th")
 	}
 }
 

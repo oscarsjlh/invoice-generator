@@ -11,6 +11,10 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func isDuplicateColumnError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "duplicate column name")
+}
+
 type Store struct {
 	db *sql.DB
 }
@@ -70,14 +74,35 @@ func (s *Store) Migrate(dir string) error {
 		}
 
 		statements := splitStatements(string(contents))
-		for i, stmt := range statements {
-			stmt = strings.TrimSpace(stmt)
-			if stmt == "" {
-				continue
+
+		tx, err := s.db.Begin()
+		if err != nil {
+			return fmt.Errorf("begin transaction for migration %s: %w", filename, err)
+		}
+
+		txErr := func() error {
+			for i, stmt := range statements {
+				stmt = strings.TrimSpace(stmt)
+				if stmt == "" {
+					continue
+				}
+				if _, err := tx.Exec(stmt); err != nil {
+					if isDuplicateColumnError(err) && strings.HasPrefix(strings.ToUpper(stmt), "ALTER TABLE") {
+						continue
+					}
+					return fmt.Errorf("run migration %s statement %d: %w", filename, i+1, err)
+				}
 			}
-			if _, err := s.db.Exec(stmt); err != nil {
-				return fmt.Errorf("run migration %s statement %d: %w", filename, i+1, err)
-			}
+			return nil
+		}()
+
+		if txErr != nil {
+			_ = tx.Rollback()
+			return txErr
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit migration %s: %w", filename, err)
 		}
 
 		if err := s.recordMigration(filename); err != nil {

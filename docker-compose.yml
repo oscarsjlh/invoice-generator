@@ -1,6 +1,6 @@
 services:
   invoice-app:
-    image: registry.oscarcorner.com/invoices
+    image: registry.oscarcorner.com/invoices:v2.2.6
     build:
       context: ./invoice-service
     ports:
@@ -28,12 +28,10 @@ services:
     restart: unless-stopped
 
   ocr-service:
-    image: registry.oscarcorner.com/invoices-ocr
+    image: registry.oscarcorner.com/invoices-ocr:v2.2.6
     env_file: .env
     build:
       context: ./ocr-service
-    ports:
-      - "8000:8000"
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318"
       OTEL_TRACES_SAMPLER: "parentbased_traceidratio"

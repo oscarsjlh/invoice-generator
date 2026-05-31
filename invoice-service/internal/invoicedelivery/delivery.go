@@ -246,6 +246,8 @@ func BuildPDFData(invoice db.Invoice, settings db.Settings) pdf.InvoiceData {
 		BankName:           invoice.BankName,
 		AccountName:        invoice.AccountName,
 		SortCode:           invoice.SortCode,
+		UTR:                invoice.UTR,
+		ShowPaymentDue:     invoice.ShowPaymentDue,
 		AccountNumber:      invoice.AccountNumber,
 		PaymentTerms:       invoice.PaymentTerms,
 		CustomerName:       settings.CustomerName,
@@ -258,9 +260,10 @@ func BuildPDFData(invoice db.Invoice, settings db.Settings) pdf.InvoiceData {
 	for _, line := range invoice.Lines {
 		hoursMinutes := int(math.Round(line.Hours * 60))
 		data.Items = append(data.Items, pdf.ItemData{
-			Description: line.Category,
-			DurMin:      hoursMinutes,
-			HourlyRate:  line.Rate,
+			Description:  line.Category,
+			DurMin:       hoursMinutes,
+			HourlyRate:   line.Rate,
+			ServiceDates: line.ServiceDates,
 		})
 	}
 

@@ -24,6 +24,12 @@
   d.display("[day padding:none] [month repr:long] [year]")
 }
 
+// Month display: "May 2026"
+#let fmt-month(date-str) = {
+  let d = parse-date(date-str)
+  d.display("[month repr:long] [year]")
+}
+
 // Currency formatter with thousands separator
 #let fmt-price(num, currency: "£") = {
   let dec = add-zeros(num)
@@ -63,6 +69,7 @@
   items: "Services",
   number: "#",
   description: "Description",
+  service-dates: "Dates",
   duration: "Hours",
   price: "Rate",
   total: "Amount",
@@ -74,6 +81,7 @@
   bank: "Bank",
   account-name: "Account Name",
   sort-code: "Sort Code",
+  utr: "UTR",
   account-number: "Account No.",
   closing: "Thank you for your business!",
 )
@@ -155,6 +163,7 @@
     datetime.today().display("[year]-[month]-[day]")
   }
   let period-value = if delivery-date != none { delivery-date } else { TODO }
+  let show-payment-due = biller.at("show-payment-due", default: true)
   let due-date-value = if due-date != none {
     due-date
   } else {
@@ -188,6 +197,7 @@
       (
         number: row.at("number", default: index + 1),
         description: row.description,
+        service-dates: row.at("service-dates", default: ""),
         hours-fmt: if row.at("dur-min", default: 0) == 0 { "" } else { add-zeros(hours) },
         rate-fmt: fmt-price(hourly-rate),
         total-fmt: fmt-price(line-total),
@@ -215,17 +225,27 @@
   v(0.8em)
 
   // Dates on one line: Date: ...   Period: ...   Due Date: ...
-  grid(
-    columns: (auto, auto, auto, auto, auto, auto, auto, auto),
-    column-gutter: 0.4em,
+  let date-cells = (
     text(fill: muted, size: 0.9em)[#labels.issuing-date:],
     text(weight: "semibold", size: 0.9em)[#fmt-date(issue-date-value)],
     h(1.2em),
     text(fill: muted, size: 0.9em)[#labels.delivery-date:],
-    text(weight: "semibold", size: 0.9em)[#fmt-date(period-value)],
-    h(1.2em),
-    text(fill: muted, size: 0.9em)[#labels.due:],
-    text(weight: "semibold", size: 0.9em)[#fmt-date(due-date-value)],
+    text(weight: "semibold", size: 0.9em)[#fmt-month(period-value)],
+  )
+  if show-payment-due {
+    date-cells.push(h(1.2em))
+    date-cells.push(text(fill: muted, size: 0.9em)[#labels.due:])
+    date-cells.push(text(weight: "semibold", size: 0.9em)[#fmt-date(due-date-value)])
+  }
+
+  grid(
+    columns: if show-payment-due {
+      (auto, auto, auto, auto, auto, auto, auto, auto)
+    } else {
+      (auto, auto, auto, auto, auto)
+    },
+    column-gutter: 0.4em,
+    ..date-cells,
   )
 
   v(1em)
@@ -256,17 +276,18 @@
   v(0.5em)
 
   table(
-    columns: (auto, 1fr, auto, auto, auto),
+    columns: (auto, 1fr, 1fr, auto, auto, auto),
     align: (col, row) => if row == 0 {
-      (right, left, center, right, right).at(col)
+      (right, left, left, center, right, right).at(col)
     } else {
-      (right, left, right, right, right).at(col)
+      (right, left, left, right, right, right).at(col)
     },
     inset: (x: 7pt, y: 5pt),
     table.header(
       table.hline(stroke: 0.8pt + accent),
       [*#labels.number*],
       [*#labels.description*],
+      [*#labels.service-dates*],
       [*#labels.duration*],
       [*#labels.price*],
       [*#labels.total* #text(size: 0.85em, fill: muted)[(#currency)]],
@@ -276,6 +297,7 @@
       .map(row => (
         str(row.number),
         row.description,
+        row.service-dates,
         row.hours-fmt,
         row.rate-fmt,
         row.total-fmt,
@@ -351,6 +373,10 @@
       fill: muted,
       size: 0.9em,
     )[#labels.sort-code: #text(fill: black, weight: "semibold")[#biller.at("sort-code", default: "—")]],
+    text(
+      fill: muted,
+      size: 0.9em,
+    )[#labels.utr: #text(fill: black, weight: "semibold")[#biller.at("utr", default: "—")]],
 
     text(
       fill: muted,
@@ -370,12 +396,14 @@
   //  FOOTER
   // ══════════════════════════════════════════════════════════════════
 
-  (labels.due-text)(fmt-date(due-date-value))
+  if show-payment-due {
+    (labels.due-text)(fmt-date(due-date-value))
 
-  if "payment-terms" in biller and biller.payment-terms != "" [
-    #v(0.3em)
-    #text(fill: muted, size: 0.9em)[#biller.payment-terms]
-  ]
+    if "payment-terms" in biller and biller.payment-terms != "" [
+      #v(0.3em)
+      #text(fill: muted, size: 0.9em)[#biller.payment-terms]
+    ]
+  }
 
   v(0.8em)
   align(center)[

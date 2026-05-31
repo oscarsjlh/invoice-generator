@@ -123,6 +123,28 @@ func TestEntriesTableReturnsPartial(t *testing.T) {
 	assert.Contains(t, string(body), "Consulting")
 }
 
+func TestEntriesTableShowsMissingRateWarning(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+
+	require.NoError(t, ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, ""))
+	require.NoError(t, ta.store.CreateRate("Consulting", "2024-04-01", "", 150.00))
+
+	req := httptest.NewRequest("GET", "/entries/table", nil)
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	ta.eh.entriesTable(w, req)
+
+	resp := w.Result()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	html := string(body)
+	assert.Contains(t, html, "missing-rate-cell")
+	assert.Contains(t, html, "Rate does not exist")
+}
+
 func TestEntriesTableRespectsYearMonthFilters(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
@@ -143,14 +165,44 @@ func TestEntriesTableRespectsYearMonthFilters(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	html := string(body)
 	assert.Contains(t, html, "Consulting")
-	assert.NotContains(t, html, "Design")
-	assert.NotContains(t, html, "Research")
+	assert.NotContains(t, html, "15 Apr 2024")
+	assert.NotContains(t, html, "15 Mar 2023")
 	assert.Contains(t, html, `name="year"`)
 	assert.Contains(t, html, `value="2024" selected`)
 	assert.Contains(t, html, `name="month"`)
 	assert.Contains(t, html, `value="03" selected`)
 	assert.Contains(t, html, `hx-get="/entries/1/edit?month=03&amp;year=2024"`)
 	assert.Contains(t, html, `hx-post="/entries/1/delete?month=03&amp;year=2024"`)
+}
+
+func TestEntriesTableRespectsRateFilterWithYearMonth(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+
+	require.NoError(t, ta.store.CreateRate("Consulting", "2024-01-01", "", 150.00))
+	require.NoError(t, ta.store.CreateRate("Design", "2024-01-01", "", 120.00))
+	require.NoError(t, ta.store.CreateEntry("2024-03-15", "Consulting", 4.5, ""))
+	require.NoError(t, ta.store.CreateEntry("2024-03-16", "Design", 2.0, ""))
+	require.NoError(t, ta.store.CreateEntry("2024-04-15", "Consulting", 1.0, ""))
+
+	req := httptest.NewRequest("GET", "/entries/table?year=2024&month=03&rate=Consulting", nil)
+	ctx := WithTestStore(req.Context(), ta.store)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	ta.eh.entriesTable(w, req)
+
+	resp := w.Result()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	html := string(body)
+	assert.Contains(t, html, "Consulting")
+	assert.NotContains(t, html, "16 Mar 2024")
+	assert.NotContains(t, html, "15 Apr 2024")
+	assert.Contains(t, html, `name="rate"`)
+	assert.Contains(t, html, `value="Consulting" selected`)
+	assert.Contains(t, html, `hx-get="/entries/1/edit?month=03&amp;rate=Consulting&amp;year=2024"`)
+	assert.Contains(t, html, `hx-post="/entries/1/delete?month=03&amp;rate=Consulting&amp;year=2024"`)
 }
 
 func TestDeleteEntryRedirects(t *testing.T) {

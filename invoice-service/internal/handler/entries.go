@@ -27,8 +27,8 @@ func (h *EntryHandlers) Routes(mux *http.ServeMux) {
 
 func (h *EntryHandlers) entriesPage(w http.ResponseWriter, r *http.Request) {
 	store := StoreFromContext(r.Context())
-	year, month := entryFiltersFromRequest(r)
-	entries, err := store.ListEntriesFiltered(year, month)
+	year, month, rate := entryFiltersFromRequest(r)
+	entries, err := store.ListEntriesFiltered(year, month, rate)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list entries", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -53,7 +53,8 @@ func (h *EntryHandlers) entriesPage(w http.ResponseWriter, r *http.Request) {
 		Months:        months,
 		SelectedYear:  year,
 		SelectedMonth: month,
-		FilterQuery:   entryFilterQuery(year, month),
+		SelectedRate:  rate,
+		FilterQuery:   entryFilterQuery(year, month, rate),
 		Notice:        noticeFromRequest(r),
 	}, "entries_table.html")
 }
@@ -99,7 +100,7 @@ func (h *EntryHandlers) createEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	LoggerFromContext(r.Context()).Info("entry created", "date", date, "category", category)
-	redirect(w, r, "/entries", "Entry added")
+	redirect(w, r, entriesPathWithNotice(r, ""), "Entry added")
 }
 
 func (h *EntryHandlers) editEntryForm(w http.ResponseWriter, r *http.Request) {
@@ -121,11 +122,11 @@ func (h *EntryHandlers) editEntryForm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	year, month := entryFiltersFromRequest(r)
+	year, month, rate := entryFiltersFromRequest(r)
 	h.renderer.Partial(w, http.StatusOK, "entry_edit_row", EntryEditRowData{
 		Entry:       entry,
 		Categories:  categories,
-		FilterQuery: entryFilterQuery(year, month),
+		FilterQuery: entryFilterQuery(year, month, rate),
 	}, "entry_edit_row.html")
 }
 
@@ -203,8 +204,8 @@ func (h *EntryHandlers) deleteEntry(w http.ResponseWriter, r *http.Request) {
 
 func (h *EntryHandlers) renderEntriesTable(w http.ResponseWriter, r *http.Request, status int, notice string) {
 	store := StoreFromContext(r.Context())
-	year, month := entryFiltersFromRequest(r)
-	entries, err := store.ListEntriesFiltered(year, month)
+	year, month, rate := entryFiltersFromRequest(r)
+	entries, err := store.ListEntriesFiltered(year, month, rate)
 	if err != nil {
 		LoggerFromContext(r.Context()).Error("list entries table", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -216,13 +217,21 @@ func (h *EntryHandlers) renderEntriesTable(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+	categories, err := store.ListCategories()
+	if err != nil {
+		LoggerFromContext(r.Context()).Error("list categories for entry filters", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 	h.renderer.Partial(w, status, "entries_table", EntriesPageData{
 		Entries:       entries,
+		Categories:    categories,
 		Years:         years,
 		Months:        months,
 		SelectedYear:  year,
 		SelectedMonth: month,
-		FilterQuery:   entryFilterQuery(year, month),
+		SelectedRate:  rate,
+		FilterQuery:   entryFilterQuery(year, month, rate),
 		Notice:        notice,
 	}, "entries_table.html")
 }
@@ -242,16 +251,17 @@ func entryFilterOptions(store interface {
 	return years, months, nil
 }
 
-func entryFiltersFromRequest(r *http.Request) (string, string) {
+func entryFiltersFromRequest(r *http.Request) (string, string, string) {
 	if err := r.ParseForm(); err != nil {
-		return "", ""
+		return "", "", ""
 	}
-	return normalizeEntryFilters(r.FormValue("year"), r.FormValue("month"))
+	return normalizeEntryFilters(r.FormValue("year"), r.FormValue("month"), r.FormValue("rate"))
 }
 
-func normalizeEntryFilters(year, month string) (string, string) {
+func normalizeEntryFilters(year, month, rate string) (string, string, string) {
 	year = strings.TrimSpace(year)
 	month = strings.TrimSpace(month)
+	rate = strings.TrimSpace(rate)
 	if len(month) == len("2006-01") {
 		if parsed, err := validateMonth(month); err == nil {
 			if year == "" {
@@ -270,16 +280,19 @@ func normalizeEntryFilters(year, month string) (string, string) {
 	} else if parsed, err := strconv.Atoi(month); err != nil || parsed < 1 || parsed > 12 {
 		month = ""
 	}
-	return year, month
+	return year, month, rate
 }
 
-func entryFilterQuery(year, month string) string {
+func entryFilterQuery(year, month, rate string) string {
 	values := url.Values{}
 	if year != "" {
 		values.Set("year", year)
 	}
 	if month != "" {
 		values.Set("month", month)
+	}
+	if rate != "" {
+		values.Set("rate", rate)
 	}
 	if encoded := values.Encode(); encoded != "" {
 		return "?" + encoded
@@ -288,13 +301,16 @@ func entryFilterQuery(year, month string) string {
 }
 
 func entriesPathWithNotice(r *http.Request, notice string) string {
-	year, month := entryFiltersFromRequest(r)
+	year, month, rate := entryFiltersFromRequest(r)
 	values := url.Values{}
 	if year != "" {
 		values.Set("year", year)
 	}
 	if month != "" {
 		values.Set("month", month)
+	}
+	if rate != "" {
+		values.Set("rate", rate)
 	}
 	if notice != "" {
 		values.Set("notice", notice)

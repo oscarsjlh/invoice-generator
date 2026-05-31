@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"testing"
 )
 
@@ -27,10 +28,12 @@ func TestGenerateInvoice(t *testing.T) {
 		AccountName:     "Test Account",
 		AccountNumber:   "12345678",
 		SortCode:        "12-34-56",
+		UTR:             "1234567890",
+		ShowPaymentDue:  true,
 		PaymentTerms:    "Payment due within 30 days.",
 	}
 
-	id, err := store.GenerateInvoice("2024-03", "All", "2024-04-01", 30, settings)
+	id, err := store.GenerateInvoice("2024-03", "All", "2024-04-01", 30, "", settings)
 	if err != nil {
 		t.Fatalf("GenerateInvoice: %v", err)
 	}
@@ -51,6 +54,15 @@ func TestGenerateInvoice(t *testing.T) {
 	if invoice.InvoiceNumber == "" {
 		t.Error("InvoiceNumber should not be empty")
 	}
+	if invoice.UTR != "1234567890" {
+		t.Errorf("UTR = %q, want %q", invoice.UTR, "1234567890")
+	}
+	if !invoice.ShowPaymentDue {
+		t.Error("ShowPaymentDue = false, want true")
+	}
+	if got := invoice.Lines[0].ServiceDates; len(got) != 1 || got[0] != "2024-03-15" {
+		t.Errorf("ServiceDates = %#v, want [2024-03-15]", got)
+	}
 }
 
 func TestGenerateInvoiceFailsWhenUnrated(t *testing.T) {
@@ -68,7 +80,7 @@ func TestGenerateInvoiceFailsWhenUnrated(t *testing.T) {
 
 	settings := Settings{BusinessName: "Test"}
 
-	_, err := store.GenerateInvoice("2024-03", "All", "2024-04-01", 30, settings)
+	_, err := store.GenerateInvoice("2024-03", "All", "2024-04-01", 30, "", settings)
 	if err == nil {
 		t.Fatal("expected error when entries lack rates, got nil")
 	}
@@ -106,7 +118,7 @@ func TestGetInvoiceWithLines(t *testing.T) {
 		PaymentTerms:    "Payment due within 30 days.",
 	}
 
-	id, err := store.GenerateInvoice("2024-03", "All", "2024-04-01", 30, settings)
+	id, err := store.GenerateInvoice("2024-03", "All", "2024-04-01", 30, "", settings)
 	if err != nil {
 		t.Fatalf("GenerateInvoice: %v", err)
 	}
@@ -214,11 +226,11 @@ func TestInvoiceNumberGeneration(t *testing.T) {
 		t.Fatalf("CreateRate: %v", err)
 	}
 
-	id1, err := store.GenerateInvoice("2024-03", "Consulting", "2024-04-01", 30, settings)
+	id1, err := store.GenerateInvoice("2024-03", "Consulting", "2024-04-01", 30, "", settings)
 	if err != nil {
 		t.Fatalf("GenerateInvoice 1: %v", err)
 	}
-	id2, err := store.GenerateInvoice("2024-03", "Consulting", "2024-04-01", 30, settings)
+	id2, err := store.GenerateInvoice("2024-03", "Consulting", "2024-04-01", 30, "", settings)
 	if err != nil {
 		t.Fatalf("GenerateInvoice 2: %v", err)
 	}
@@ -234,6 +246,119 @@ func TestInvoiceNumberGeneration(t *testing.T) {
 
 	if invoice1.InvoiceNumber == invoice2.InvoiceNumber {
 		t.Errorf("invoice numbers should differ: %q vs %q", invoice1.InvoiceNumber, invoice2.InvoiceNumber)
+	}
+}
+
+func TestGenerateInvoiceUsesCustomInvoiceNumber(t *testing.T) {
+	t.Parallel()
+	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
+
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry: %v", err)
+	}
+	if err := store.CreateRate("Consulting", "2024-01-01", "", 150.00); err != nil {
+		t.Fatalf("CreateRate: %v", err)
+	}
+
+	id, err := store.GenerateInvoice("2024-03", "Consulting", "2024-04-01", 30, "CUSTOM-001", Settings{BusinessName: "Test"})
+	if err != nil {
+		t.Fatalf("GenerateInvoice: %v", err)
+	}
+
+	invoice, err := store.GetInvoice(id)
+	if err != nil {
+		t.Fatalf("GetInvoice: %v", err)
+	}
+	if invoice.InvoiceNumber != "CUSTOM-001" {
+		t.Errorf("InvoiceNumber = %q, want CUSTOM-001", invoice.InvoiceNumber)
+	}
+
+	if _, err := store.GenerateInvoice("2024-03", "Consulting", "2024-04-01", 30, "CUSTOM-001", Settings{BusinessName: "Test"}); err == nil {
+		t.Fatal("expected duplicate custom invoice number to fail")
+	}
+}
+
+func TestGenerateInvoiceStoresServiceDatesPerCategory(t *testing.T) {
+	t.Parallel()
+	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
+
+	for _, date := range []string{"2024-03-20", "2024-03-01", "2024-03-02"} {
+		if err := store.CreateEntry(date, "Consulting", 1, ""); err != nil {
+			t.Fatalf("CreateEntry %s: %v", date, err)
+		}
+	}
+	if err := store.CreateRate("Consulting", "2024-01-01", "", 150.00); err != nil {
+		t.Fatalf("CreateRate: %v", err)
+	}
+
+	id, err := store.GenerateInvoice("2024-03", "Consulting", "2024-04-01", 30, "", Settings{BusinessName: "Test"})
+	if err != nil {
+		t.Fatalf("GenerateInvoice: %v", err)
+	}
+
+	invoice, err := store.GetInvoice(id)
+	if err != nil {
+		t.Fatalf("GetInvoice: %v", err)
+	}
+	if len(invoice.Lines) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(invoice.Lines))
+	}
+	want := []string{"2024-03-01", "2024-03-02", "2024-03-20"}
+	got := invoice.Lines[0].ServiceDates
+	if len(got) != len(want) {
+		t.Fatalf("ServiceDates = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("ServiceDates[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestDeleteInvoiceRemovesInvoiceAndLines(t *testing.T) {
+	t.Parallel()
+	store := setupTestDB(t)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
+
+	if err := store.CreateEntry("2024-03-15", "Consulting", 4.5, ""); err != nil {
+		t.Fatalf("CreateEntry: %v", err)
+	}
+	if err := store.CreateRate("Consulting", "2024-01-01", "", 150.00); err != nil {
+		t.Fatalf("CreateRate: %v", err)
+	}
+
+	id, err := store.GenerateInvoice("2024-03", "Consulting", "2024-04-01", 30, "", Settings{BusinessName: "Test"})
+	if err != nil {
+		t.Fatalf("GenerateInvoice: %v", err)
+	}
+
+	if err := store.DeleteInvoice(id); err != nil {
+		t.Fatalf("DeleteInvoice: %v", err)
+	}
+	if _, err := store.GetInvoice(id); err != sql.ErrNoRows {
+		t.Fatalf("GetInvoice after delete error = %v, want sql.ErrNoRows", err)
+	}
+
+	var lineCount int
+	if err := store.DB().QueryRow(`SELECT COUNT(*) FROM invoice_lines WHERE invoice_id = ?`, id).Scan(&lineCount); err != nil {
+		t.Fatalf("count invoice lines: %v", err)
+	}
+	if lineCount != 0 {
+		t.Errorf("line count = %d, want 0", lineCount)
 	}
 }
 
@@ -325,7 +450,7 @@ func createInvoiceForMonth(t *testing.T, store *Store, month string, _ float64) 
 		SortCode:        "12-34-56",
 		PaymentTerms:    "Payment due within 30 days.",
 	}
-	_, err := store.GenerateInvoice(month, "All", "2024-04-01", 30, settings)
+	_, err := store.GenerateInvoice(month, "All", "2024-04-01", 30, "", settings)
 	if err != nil {
 		t.Fatalf("GenerateInvoice for %s: %v", month, err)
 	}

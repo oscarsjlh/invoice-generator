@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"invoice-app/internal/config"
@@ -27,6 +28,7 @@ func (h *InvoiceHandlers) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /invoices/{id}", h.invoicePreview)
 	mux.HandleFunc("GET /invoices/{id}/pdf", h.invoicePDF)
 	mux.HandleFunc("POST /invoices/{id}/send", h.sendInvoice)
+	mux.HandleFunc("POST /invoices/{id}/delete", h.deleteInvoice)
 }
 
 func (h *InvoiceHandlers) invoicesPage(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +94,8 @@ func (h *InvoiceHandlers) generateInvoice(w http.ResponseWriter, r *http.Request
 	}
 
 	category := normalizeCategory(r.FormValue("category"))
-	invoiceID, err := store.GenerateInvoice(month, category, invoiceDate, dueDays, settings)
+	invoiceNumber := strings.TrimSpace(r.FormValue("invoice_number"))
+	invoiceID, err := store.GenerateInvoice(month, category, invoiceDate, dueDays, invoiceNumber, settings)
 	if err != nil {
 		LoggerFromContext(r.Context()).Warn("generate invoice", "month", month, "category", category, "error", err)
 		redirect(w, r, "/invoices", fmt.Sprintf("Could not generate invoice: %v", err))
@@ -198,4 +201,25 @@ func (h *InvoiceHandlers) sendInvoice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	redirect(w, r, fmt.Sprintf("/invoices/%d", invoice.ID), fmt.Sprintf("Invoice sent to %s", result.Recipient))
+}
+
+func (h *InvoiceHandlers) deleteInvoice(w http.ResponseWriter, r *http.Request) {
+	store := StoreFromContext(r.Context())
+	id, err := parseInt64Path(r, "id")
+	if err != nil {
+		http.Error(w, "invalid invoice id", http.StatusBadRequest)
+		return
+	}
+	if err := store.DeleteInvoice(id); err != nil {
+		if err == sql.ErrNoRows {
+			http.NotFound(w, r)
+			return
+		}
+		LoggerFromContext(r.Context()).Error("delete invoice", "invoice_id", id, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	LoggerFromContext(r.Context()).Info("invoice deleted", "invoice_id", id)
+	redirect(w, r, "/invoices", "Invoice deleted")
 }

@@ -10,6 +10,12 @@
 <article class="notice">{{.Notice}}</article>
 {{end}}
 
+{{if .MissingRateCount}}
+<article class="notice warning">
+  You have missing rates on some entries ({{.MissingRateCount}} affected). Those entries are not included in the totals until a matching rate exists.
+</article>
+{{end}}
+
 <form method="GET" action="/" style="margin-bottom: 1.5rem;">
   <fieldset>
     <legend>Filters</legend>

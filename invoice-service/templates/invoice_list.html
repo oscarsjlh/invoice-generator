@@ -10,6 +10,7 @@
         <th>Invoice Date</th>
         <th>Due Date</th>
         <th>Total</th>
+        <th>Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -21,6 +22,12 @@
         <td>{{dateLabel .InvoiceDate}}</td>
         <td>{{dateLabel .DueDate}}</td>
         <td>GBP {{money .Total}}</td>
+        <td>
+          <form method="post" action="/invoices/{{.ID}}/delete" class="inline-form" onsubmit="return confirm('Delete this invoice?');">
+            <input type="hidden" name="csrf_token" value="">
+            <button type="submit" class="secondary">Delete</button>
+          </form>
+        </td>
       </tr>
       {{end}}
     </tbody>

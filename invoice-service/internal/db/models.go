@@ -1,11 +1,12 @@
 package db
 
 type Entry struct {
-	ID       int64
-	Date     string
-	Category string
-	Hours    float64
-	Notes    string
+	ID          int64
+	Date        string
+	Category    string
+	Hours       float64
+	Notes       string
+	MissingRate bool
 }
 
 type Rate struct {
@@ -35,11 +36,12 @@ type InvoiceSummary struct {
 }
 
 type InvoiceLine struct {
-	ID       int64
-	Category string
-	Hours    float64
-	Rate     float64
-	Amount   float64
+	ID           int64
+	Category     string
+	Hours        float64
+	Rate         float64
+	Amount       float64
+	ServiceDates []string
 }
 
 type Invoice struct {
@@ -57,6 +59,8 @@ type Invoice struct {
 	AccountName        string
 	AccountNumber      string
 	SortCode           string
+	UTR                string
+	ShowPaymentDue     bool
 	PaymentTerms       string
 	CustomerName       string
 	CustomerTitle      string
@@ -115,6 +119,8 @@ type Settings struct {
 	AccountName        string
 	AccountNumber      string
 	SortCode           string
+	UTR                string
+	ShowPaymentDue     bool
 	PaymentTerms       string
 	DefaultDueDays     int
 	CustomerName       string

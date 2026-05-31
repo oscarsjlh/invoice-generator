@@ -15,6 +15,8 @@ func TestSaveAndLoadSettings(t *testing.T) {
 		AccountName:     "Test Account",
 		AccountNumber:   "12345678",
 		SortCode:        "12-34-56",
+		UTR:             "1234567890",
+		ShowPaymentDue:  true,
 		PaymentTerms:    "Net 30.",
 		DefaultDueDays:  45,
 		CustomerName:    "John Doe",
@@ -42,6 +44,7 @@ func TestSaveAndLoadSettings(t *testing.T) {
 		{"AccountName", loaded.AccountName, "Test Account"},
 		{"AccountNumber", loaded.AccountNumber, "12345678"},
 		{"SortCode", loaded.SortCode, "12-34-56"},
+		{"UTR", loaded.UTR, "1234567890"},
 		{"PaymentTerms", loaded.PaymentTerms, "Net 30."},
 		{"CustomerName", loaded.CustomerName, "John Doe"},
 		{"CustomerEmail", loaded.CustomerEmail, "john@example.com"},
@@ -56,6 +59,9 @@ func TestSaveAndLoadSettings(t *testing.T) {
 	if loaded.DefaultDueDays != 45 {
 		t.Errorf("DefaultDueDays = %d, want 45", loaded.DefaultDueDays)
 	}
+	if !loaded.ShowPaymentDue {
+		t.Error("ShowPaymentDue = false, want true")
+	}
 }
 
 func TestLoadSettingsReturnsDefaultsWhenNoneSaved(t *testing.T) {
@@ -69,6 +75,9 @@ func TestLoadSettingsReturnsDefaultsWhenNoneSaved(t *testing.T) {
 
 	if settings.DefaultDueDays != 30 {
 		t.Errorf("DefaultDueDays = %d, want 30", settings.DefaultDueDays)
+	}
+	if !settings.ShowPaymentDue {
+		t.Error("ShowPaymentDue = false, want true")
 	}
 	if settings.BusinessName != "" {
 		t.Errorf("BusinessName = %q, want empty", settings.BusinessName)

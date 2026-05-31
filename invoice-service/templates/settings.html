@@ -36,8 +36,16 @@
         <input type="text" name="sort_code" value="{{.Settings.SortCode}}">
       </label>
       <label>
+        UTR
+        <input type="text" name="utr" value="{{.Settings.UTR}}">
+      </label>
+      <label>
         Default Due Days
         <input type="number" name="default_due_days" min="1" step="1" value="{{.Settings.DefaultDueDays}}">
+      </label>
+      <label>
+        <input type="checkbox" name="show_payment_due" {{if .Settings.ShowPaymentDue}}checked{{end}}>
+        Show due date and payment due text on PDFs
       </label>
     </div>
     <label>
