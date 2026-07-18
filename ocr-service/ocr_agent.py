@@ -61,29 +61,32 @@ def prepare_image_for_bedrock(path: str, max_dim: int | None = None) -> str:
     if max_dim is None:
         max_dim = int(os.environ.get("OCR_MAX_IMAGE_DIMENSION", "2048"))
 
-    img = Image.open(path)
-    img = ImageOps.exif_transpose(img)
+    try:
+        with Image.open(path) as img:
+            img = ImageOps.exif_transpose(img)
 
-    if img.mode in ("RGBA", "LA", "P"):
-        img = img.convert("RGB")
+            if img.mode in ("RGBA", "LA", "P"):
+                img = img.convert("RGB")
 
-    w, h = img.size
-    if w > max_dim or h > max_dim:
-        if w > h:
-            new_w = max_dim
-            new_h = int(round(h * max_dim / w))
-        else:
-            new_h = max_dim
-            new_w = int(round(w * max_dim / h))
-        img = img.resize((new_w, new_h), Image.LANCZOS)
+            w, h = img.size
+            if w > max_dim or h > max_dim:
+                if w > h:
+                    new_w = max_dim
+                    new_h = int(round(h * max_dim / w))
+                else:
+                    new_h = max_dim
+                    new_w = int(round(w * max_dim / h))
+                img = img.resize((new_w, new_h), Image.LANCZOS)
 
-    w, h = img.size
-    align = 32
-    new_w = ((w + align - 1) // align) * align
-    new_h = ((h + align - 1) // align) * align
-    if new_w != w or new_h != h:
-        img = img.resize((new_w, new_h), Image.LANCZOS)
+            w, h = img.size
+            align = 32
+            new_w = ((w + align - 1) // align) * align
+            new_h = ((h + align - 1) // align) * align
+            if new_w != w or new_h != h:
+                img = img.resize((new_w, new_h), Image.LANCZOS)
 
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=85)
-    return base64.b64encode(buf.getvalue()).decode()
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=85)
+            return base64.b64encode(buf.getvalue()).decode()
+    except (OSError, ValueError) as e:
+        raise OCRParseError(f"failed to prepare image {path!r}: {e}") from e
