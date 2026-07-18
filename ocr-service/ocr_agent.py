@@ -295,7 +295,6 @@ def run_extraction_loop(
                     review_reason=f"parser_error: {e}",
                 )
             )
-            max_rounds = max(max_rounds, 1)
             continue
 
         for attempt in range(MAX_ROUNDS):
