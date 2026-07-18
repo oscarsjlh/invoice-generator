@@ -270,3 +270,62 @@ def validate_page(page: PageExtraction, context: OCRContext) -> ValidationResult
             valid.append(entry)
 
     return ValidationResult(valid=valid, flagged=flagged)
+
+
+def run_extraction_loop(
+    image_paths: list[str], context: OCRContext, client, model: str
+) -> tuple[list[ExtractedEntry], dict]:
+    all_entries: list[ExtractedEntry] = []
+    max_rounds = 0
+
+    for idx, path in enumerate(image_paths):
+        page_context = context.model_copy(update={"page_number": idx + 1})
+        rounds = 0
+
+        try:
+            page = extract_page(path, page_context, client, model)
+        except OCRParseError as e:
+            all_entries.append(
+                ExtractedEntry(
+                    date_raw="?", date_normalized="",
+                    category_raw="?", category_normalized="",
+                    hours_raw="?", hours_normalized="",
+                    notes_raw="", notes_normalized="",
+                    confidence=0.0, needs_review=True,
+                    review_reason=f"parser_error: {e}",
+                )
+            )
+            max_rounds = max(max_rounds, 1)
+            continue
+
+        for attempt in range(MAX_ROUNDS):
+            rounds += 1
+            result = validate_page(page, page_context)
+            if not result.flagged:
+                all_entries.extend(result.valid)
+                break
+
+            if attempt == MAX_ROUNDS - 1:
+                all_entries.extend(result.valid)
+                all_entries.extend(result.flagged)
+            else:
+                try:
+                    corrected = correct_entries(path, result.flagged, page_context, client, model)
+                except OCRParseError:
+                    all_entries.extend(result.valid)
+                    for entry in result.flagged:
+                        entry.review_reason = (entry.review_reason or "") + "; parser_error"
+                        all_entries.append(entry)
+                    break
+                if len(corrected.entries) == len(result.flagged):
+                    page = PageExtraction(entries=result.valid + corrected.entries)
+                else:
+                    all_entries.extend(result.valid)
+                    for entry in result.flagged:
+                        entry.review_reason = (entry.review_reason or "") + "; correction_mismatch"
+                        all_entries.append(entry)
+                    break
+
+        max_rounds = max(max_rounds, rounds)
+
+    return all_entries, {"rounds": max_rounds, "pages": len(image_paths)}
