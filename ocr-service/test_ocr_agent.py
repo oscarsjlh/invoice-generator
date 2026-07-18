@@ -93,6 +93,30 @@ def test_extract_page_returns_structured_entries():
         assert entry.notes_normalized == "client meeting"
 
 
+def test_extract_page_accepts_numeric_hours():
+    # LLM sometimes returns hours as JSON numbers; the schema should coerce them to strings.
+    raw = {
+        "entries": [
+            {
+                "date_raw": "12/5",
+                "date_normalized": "2026-05-12",
+                "category_raw": "Consulting",
+                "category_normalized": "Consulting",
+                "hours_raw": 3.0,
+                "hours_normalized": 3.0,
+                "notes_raw": "",
+                "notes_normalized": "",
+                "confidence": 0.9,
+                "needs_review": False,
+            }
+        ]
+    }
+    page = ocr_agent._parse_page_json(json.dumps(raw))
+    assert len(page.entries) == 1
+    assert page.entries[0].hours_raw == "3.0"
+    assert page.entries[0].hours_normalized == "3.0"
+
+
 def test_validate_page_flags_unknown_category():
     entry = ExtractedEntry.model_validate(
         _entry_dict(category_normalized="Cons")

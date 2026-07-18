@@ -7,11 +7,11 @@ import io
 import json
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Annotated, Optional
 
 from botocore.exceptions import BotoCoreError, ClientError
 from PIL import Image, ImageOps
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, BeforeValidator, Field, ValidationError
 
 try:
     from pillow_heif import register_heif_opener
@@ -25,13 +25,24 @@ class OCRParseError(Exception):
     """Raised when the model response cannot be parsed into the expected schema."""
 
 
+def _coerce_str(value):
+    """Allow numeric JSON values to be accepted where the schema expects a string."""
+    if isinstance(value, (int, float)):
+        return str(value)
+    return value
+
+
+# Model sometimes returns hours as JSON numbers; keep the Go contract as strings.
+StringOrNumber = Annotated[str, BeforeValidator(_coerce_str)]
+
+
 class ExtractedEntry(BaseModel):
     date_raw: str
     date_normalized: str
     category_raw: str
     category_normalized: str
-    hours_raw: str
-    hours_normalized: str
+    hours_raw: StringOrNumber
+    hours_normalized: StringOrNumber
     notes_raw: str = ""
     notes_normalized: str = ""
     confidence: float = Field(ge=0.0, le=1.0, default=0.7)
