@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import math
 import os
 from datetime import datetime
 from typing import Annotated, Optional
@@ -239,13 +240,24 @@ def correct_entries(
     return _parse_page_json(text)
 
 
+def _rate_covers_date(rate: RateHint, entry_date: datetime) -> bool:
+    """Report whether a rate hint applies to an entry date."""
+    try:
+        start_date = datetime.strptime(rate.start_date, "%Y-%m-%d")
+        end_date = datetime.strptime(rate.end_date, "%Y-%m-%d") if rate.end_date else None
+    except ValueError:
+        return False
+    return start_date <= entry_date and (end_date is None or entry_date <= end_date)
+
+
 def validate_page(page: PageExtraction, context: OCRContext) -> ValidationResult:
     """Classify extracted entries as valid or flagged.
 
     Each entry is checked against the provided context: the normalized category
     must be known, the normalized date must parse as YYYY-MM-DD, hours must be a
-    positive number, confidence must be at least 0.5, and no raw field may be a
-    literal "?" marker. Flagged entries are mutated in place; their
+    finite positive number, confidence must be at least 0.5, and no raw field may
+    be a literal "?" marker. When rate hints are present, the entry must also have
+    a matching category and date range. Flagged entries are mutated in place; their
     ``needs_review`` field is set to ``True`` and ``review_reason`` is set to a
     semicolon-separated list of failure reasons.
 
@@ -262,17 +274,27 @@ def validate_page(page: PageExtraction, context: OCRContext) -> ValidationResult
         if entry.category_normalized.lower() not in known:
             reasons.append("unknown_category")
 
+        entry_date = None
         try:
-            datetime.strptime(entry.date_normalized, "%Y-%m-%d")
+            entry_date = datetime.strptime(entry.date_normalized, "%Y-%m-%d")
         except ValueError:
             reasons.append("invalid_date")
 
         try:
             hours = float(entry.hours_normalized)
-            if hours <= 0:
+            if not math.isfinite(hours) or hours <= 0:
                 reasons.append("invalid_hours")
         except ValueError:
             reasons.append("invalid_hours")
+
+        if context.rates and entry_date is not None:
+            has_matching_rate = any(
+                rate.category.casefold() == entry.category_normalized.casefold()
+                and _rate_covers_date(rate, entry_date)
+                for rate in context.rates
+            )
+            if not has_matching_rate:
+                reasons.append("missing_rate")
 
         if entry.confidence < 0.5:
             reasons.append("low_confidence")

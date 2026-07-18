@@ -154,6 +154,58 @@ def test_validate_page_flags_invalid_hours():
     assert "invalid_hours" in result.flagged[0].review_reason
 
 
+@pytest.mark.parametrize("hours", ["NaN", "inf", "-inf"])
+def test_validate_page_flags_non_finite_hours(hours):
+    entry = ExtractedEntry.model_validate(_entry_dict(hours_normalized=hours))
+    ctx = OCRContext(categories=["Consulting"], current_year=2026)
+
+    result = validate_page(PageExtraction(entries=[entry]), ctx)
+
+    assert len(result.flagged) == 1
+    assert "invalid_hours" in result.flagged[0].review_reason
+
+
+def test_validate_page_flags_entry_without_matching_rate_hint():
+    entry = ExtractedEntry.model_validate(_entry_dict(date_normalized="2026-05-12"))
+    ctx = OCRContext(
+        categories=["Consulting"],
+        rates=[
+            ocr_agent.RateHint(
+                category="Consulting",
+                start_date="2026-06-01",
+                end_date="",
+                rate=100,
+            )
+        ],
+        current_year=2026,
+    )
+
+    result = validate_page(PageExtraction(entries=[entry]), ctx)
+
+    assert len(result.flagged) == 1
+    assert "missing_rate" in result.flagged[0].review_reason
+
+
+def test_validate_page_accepts_entry_with_matching_rate_hint():
+    entry = ExtractedEntry.model_validate(_entry_dict(date_normalized="2026-05-12"))
+    ctx = OCRContext(
+        categories=["Consulting"],
+        rates=[
+            ocr_agent.RateHint(
+                category="Consulting",
+                start_date="2026-01-01",
+                end_date="2026-05-31",
+                rate=100,
+            )
+        ],
+        current_year=2026,
+    )
+
+    result = validate_page(PageExtraction(entries=[entry]), ctx)
+
+    assert result.valid == [entry]
+
+
 def test_run_extraction_loop_corrects_unknown_category():
     responses = [
         {
