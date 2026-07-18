@@ -3,12 +3,10 @@
 import base64
 import io
 import json
-import os
 import tempfile
 from pathlib import Path
 
 from PIL import Image
-from pillow_heif import register_heif_opener
 
 import ocr_agent
 from ocr_agent import (
@@ -20,8 +18,6 @@ from ocr_agent import (
     run_extraction_loop,
     validate_page,
 )
-
-register_heif_opener()
 
 
 class FakeBedrockClient:
@@ -35,6 +31,17 @@ class FakeBedrockClient:
 def make_test_image(path: str, size: tuple[int, int] = (300, 200), color: str = "white"):
     img = Image.new("RGB", size, color=color)
     img.save(path, "JPEG")
+
+
+def make_test_image_path() -> Path:
+    """Create a temporary test image and return its path.
+
+    The caller is responsible for removing the file and its parent directory
+    when finished.
+    """
+    path = Path(tempfile.mkdtemp()) / "page.jpg"
+    make_test_image(path)
+    return path
 
 
 def _entry_dict(**overrides) -> dict:
@@ -229,3 +236,55 @@ def test_prepare_image_fixes_exif_orientation():
 
         # After EXIF orientation correction the image should be landscape.
         assert decoded.width > decoded.height
+
+
+def test_validate_page_flags_low_confidence_and_unreadable_field():
+    entry = ocr_agent.ExtractedEntry(
+        date_raw="?", date_normalized="",
+        category_raw="?", category_normalized="Consulting",
+        hours_raw="7.5", hours_normalized="7.5",
+        confidence=0.4,
+    )
+    page = ocr_agent.PageExtraction(entries=[entry])
+    ctx = ocr_agent.OCRContext(categories=["Consulting"], current_year=2026)
+    result = ocr_agent.validate_page(page, ctx)
+    assert len(result.flagged) == 1
+    assert "low_confidence" in result.flagged[0].review_reason
+    assert "unreadable_field" in result.flagged[0].review_reason
+
+
+def test_run_extraction_loop_handles_parser_error():
+    class BadClient:
+        def invoke_model(self, *, modelId, body):
+            raise RuntimeError("network failure")
+
+    path = make_test_image_path()
+    ctx = ocr_agent.OCRContext(categories=["Consulting"], current_year=2026)
+    entries, meta = ocr_agent.run_extraction_loop([path], ctx, BadClient(), "test")
+    assert len(entries) == 1
+    assert entries[0].needs_review is True
+    assert "parser_error" in entries[0].review_reason
+    path.unlink()
+    path.parent.rmdir()
+
+
+def test_run_extraction_loop_handles_correction_mismatch():
+    # First response has a flag, second correction returns a different count.
+    responses = [
+        {"choices": [{"message": {"content": '{"entries": [{"date_raw": "12/5", "date_normalized": "2026-05-12", "category_raw": "Cons", "category_normalized": "Cons", "hours_raw": "7.5", "hours_normalized": "7.5", "notes_raw": "", "notes_normalized": "", "confidence": 0.8, "needs_review": false}]}'}}]},
+        {"choices": [{"message": {"content": '{"entries": []}'}}]},
+    ]
+    path = make_test_image_path()
+    ctx = ocr_agent.OCRContext(categories=["Consulting"], current_year=2026)
+    entries, meta = ocr_agent.run_extraction_loop([path], ctx, FakeBedrockClient(responses), "test")
+    assert len(entries) == 1
+    assert entries[0].needs_review is True
+    assert "correction_mismatch" in entries[0].review_reason
+    path.unlink()
+    path.parent.rmdir()
+
+
+def test_parse_page_json_strips_markdown_fences():
+    text = "```json\n{\"entries\": []}\n```"
+    page = ocr_agent._parse_page_json(text)
+    assert page.entries == []

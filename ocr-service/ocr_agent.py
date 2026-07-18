@@ -11,10 +11,14 @@ from typing import Optional
 
 from botocore.exceptions import ClientError
 from PIL import Image, ImageOps
-from pillow_heif import register_heif_opener
 from pydantic import BaseModel, Field, ValidationError
 
-register_heif_opener()
+try:
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+except ImportError:
+    pass
 
 
 class OCRParseError(Exception):
@@ -164,7 +168,7 @@ def _strip_markdown_fences(text: str) -> str:
 def _invoke_bedrock_json(client, model: str, body: str) -> str:
     try:
         resp = client.invoke_model(modelId=model, body=body)
-    except ClientError as e:
+    except Exception as e:
         raise OCRParseError(f"Bedrock invoke failed: {e}") from e
     try:
         result = json.loads(resp["body"].read())
