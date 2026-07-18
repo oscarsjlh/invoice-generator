@@ -100,6 +100,7 @@ type OCRDraftEntry struct {
 	NotesNormalized    string
 	Confidence         float64
 	NeedsReview        bool
+	ReviewReason       string
 	Confirmed          bool
 }
 
