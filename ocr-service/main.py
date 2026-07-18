@@ -10,6 +10,7 @@ Endpoints:
 Environment variables:
     OCR_LISTEN                - Bind address (default: :8000)
     OCR_MAX_IMAGE_DIMENSION   - Maximum width/height in pixels before resizing (default: 2048)
+    OCR_AGENT_ENABLED         - Use the agentic extraction loop (default: true)
     BEDROCK_REGION            - AWS region (default: us-east-1)
     BEDROCK_MODEL             - Model ID (default: us.anthropic.claude-3-5-haiku-20241022-v1:0)
 """
