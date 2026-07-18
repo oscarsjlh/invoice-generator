@@ -40,7 +40,7 @@
 <section class="ocr-review-section">
   <div class="review-board-header">
     <h2>Extracted Entries</h2>
-    <p class="muted">{{len .Drafts}} entries found</p>
+    <p id="draft-count" class="muted">{{len .Drafts}} entries found</p>
   </div>
   {{if .Drafts}}
   <form method="post" action="/ocr/import/{{.Session.ID}}/confirm">

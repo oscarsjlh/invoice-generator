@@ -197,7 +197,7 @@ func TestOCRDeleteDraftHandlerRemovesDraftFromSession(t *testing.T) {
 	assert.Equal(t, drafts[1].ID, remaining[0].ID)
 }
 
-func TestOCRDeleteDraftHandlerReturnsNoContentForHTMX(t *testing.T) {
+func TestOCRDeleteDraftHandlerRefreshesCountForHTMX(t *testing.T) {
 	t.Parallel()
 	ta := newTestAppWithAuth(t)
 	ta.app.cfg.OCREnabled = true
@@ -236,7 +236,12 @@ func TestOCRDeleteDraftHandlerReturnsNoContentForHTMX(t *testing.T) {
 
 	ta.oh.ocrDeleteDraft(w, req)
 
-	assert.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	assert.Equal(t, http.StatusOK, w.Result().StatusCode)
+	body, err := io.ReadAll(w.Result().Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `id="draft-count"`)
+	assert.Contains(t, string(body), `hx-swap-oob="true"`)
+	assert.Contains(t, string(body), `1 entries found`)
 	remaining, err := store.GetDraftEntries(sessionID)
 	require.NoError(t, err)
 	require.Len(t, remaining, 1)
