@@ -204,10 +204,8 @@ def test_run_extraction_loop_marks_persistent_flags_for_review():
         assert meta["rounds"] == 2
 
 
-heif = pytest.importorskip("pillow_heif")
-
-
 def test_prepare_image_converts_heic_to_jpeg():
+    pytest.importorskip("pillow_heif")
     with tempfile.TemporaryDirectory() as tmpdir:
         heic_path = Path(tmpdir) / "sheet.heic"
         img = Image.new("RGB", (64, 64), color="white")
@@ -270,7 +268,7 @@ def test_run_extraction_loop_handles_parser_error():
 
     with make_test_image_path() as path:
         ctx = ocr_agent.OCRContext(categories=["Consulting"], current_year=2026)
-        entries, meta = ocr_agent.run_extraction_loop([path], ctx, BadClient(), "test")
+        entries, meta = ocr_agent.run_extraction_loop([str(path)], ctx, BadClient(), "test")
         assert len(entries) == 1
         assert entries[0].needs_review is True
         assert "parser_error" in entries[0].review_reason
@@ -284,7 +282,7 @@ def test_run_extraction_loop_handles_correction_mismatch():
     ]
     with make_test_image_path() as path:
         ctx = ocr_agent.OCRContext(categories=["Consulting"], current_year=2026)
-        entries, meta = ocr_agent.run_extraction_loop([path], ctx, FakeBedrockClient(responses), "test")
+        entries, meta = ocr_agent.run_extraction_loop([str(path)], ctx, FakeBedrockClient(responses), "test")
         assert len(entries) == 1
         assert entries[0].needs_review is True
         assert "correction_mismatch" in entries[0].review_reason
