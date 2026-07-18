@@ -95,7 +95,7 @@ def prepare_image_for_bedrock(path: str, max_dim: int | None = None) -> str:
 
 
 def _sanitize_category(name: str) -> str:
-    # Keep printable characters, collapse whitespace, and cap length.
+    # Keep printable characters, trim edges, and cap length.
     cleaned = "".join(ch for ch in name.strip() if ch.isprintable())
     return cleaned[:64]
 
