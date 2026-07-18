@@ -9,7 +9,7 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 from PIL import Image, ImageOps
 from pydantic import BaseModel, Field, ValidationError
 
@@ -168,7 +168,7 @@ def _strip_markdown_fences(text: str) -> str:
 def _invoke_bedrock_json(client, model: str, body: str) -> str:
     try:
         resp = client.invoke_model(modelId=model, body=body)
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         raise OCRParseError(f"Bedrock invoke failed: {e}") from e
     try:
         result = json.loads(resp["body"].read())

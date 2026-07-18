@@ -1,11 +1,14 @@
 """Unit tests for the OCR agent loop and image preprocessing."""
 
 import base64
+import contextlib
 import io
 import json
 import tempfile
 from pathlib import Path
 
+import pytest
+from botocore.exceptions import ClientError
 from PIL import Image
 
 import ocr_agent
@@ -33,15 +36,16 @@ def make_test_image(path: str, size: tuple[int, int] = (300, 200), color: str = 
     img.save(path, "JPEG")
 
 
-def make_test_image_path() -> Path:
-    """Create a temporary test image and return its path.
+@contextlib.contextmanager
+def make_test_image_path():
+    """Create a temporary test image and yield its path.
 
-    The caller is responsible for removing the file and its parent directory
-    when finished.
+    The temporary directory is removed when the context manager exits.
     """
-    path = Path(tempfile.mkdtemp()) / "page.jpg"
-    make_test_image(path)
-    return path
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "page.jpg"
+        make_test_image(path)
+        yield path
 
 
 def _entry_dict(**overrides) -> dict:
@@ -200,6 +204,9 @@ def test_run_extraction_loop_marks_persistent_flags_for_review():
         assert meta["rounds"] == 2
 
 
+heif = pytest.importorskip("pillow_heif")
+
+
 def test_prepare_image_converts_heic_to_jpeg():
     with tempfile.TemporaryDirectory() as tmpdir:
         heic_path = Path(tmpdir) / "sheet.heic"
@@ -256,16 +263,17 @@ def test_validate_page_flags_low_confidence_and_unreadable_field():
 def test_run_extraction_loop_handles_parser_error():
     class BadClient:
         def invoke_model(self, *, modelId, body):
-            raise RuntimeError("network failure")
+            raise ClientError(
+                {"Error": {"Code": "500", "Message": "network failure"}},
+                "InvokeModel",
+            )
 
-    path = make_test_image_path()
-    ctx = ocr_agent.OCRContext(categories=["Consulting"], current_year=2026)
-    entries, meta = ocr_agent.run_extraction_loop([path], ctx, BadClient(), "test")
-    assert len(entries) == 1
-    assert entries[0].needs_review is True
-    assert "parser_error" in entries[0].review_reason
-    path.unlink()
-    path.parent.rmdir()
+    with make_test_image_path() as path:
+        ctx = ocr_agent.OCRContext(categories=["Consulting"], current_year=2026)
+        entries, meta = ocr_agent.run_extraction_loop([path], ctx, BadClient(), "test")
+        assert len(entries) == 1
+        assert entries[0].needs_review is True
+        assert "parser_error" in entries[0].review_reason
 
 
 def test_run_extraction_loop_handles_correction_mismatch():
@@ -274,14 +282,12 @@ def test_run_extraction_loop_handles_correction_mismatch():
         {"choices": [{"message": {"content": '{"entries": [{"date_raw": "12/5", "date_normalized": "2026-05-12", "category_raw": "Cons", "category_normalized": "Cons", "hours_raw": "7.5", "hours_normalized": "7.5", "notes_raw": "", "notes_normalized": "", "confidence": 0.8, "needs_review": false}]}'}}]},
         {"choices": [{"message": {"content": '{"entries": []}'}}]},
     ]
-    path = make_test_image_path()
-    ctx = ocr_agent.OCRContext(categories=["Consulting"], current_year=2026)
-    entries, meta = ocr_agent.run_extraction_loop([path], ctx, FakeBedrockClient(responses), "test")
-    assert len(entries) == 1
-    assert entries[0].needs_review is True
-    assert "correction_mismatch" in entries[0].review_reason
-    path.unlink()
-    path.parent.rmdir()
+    with make_test_image_path() as path:
+        ctx = ocr_agent.OCRContext(categories=["Consulting"], current_year=2026)
+        entries, meta = ocr_agent.run_extraction_loop([path], ctx, FakeBedrockClient(responses), "test")
+        assert len(entries) == 1
+        assert entries[0].needs_review is True
+        assert "correction_mismatch" in entries[0].review_reason
 
 
 def test_parse_page_json_strips_markdown_fences():
