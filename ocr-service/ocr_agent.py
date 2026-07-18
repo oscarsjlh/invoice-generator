@@ -219,3 +219,42 @@ def correct_entries(
     body = _build_bedrock_body(b64, prompt)
     text = _invoke_bedrock_json(client, model, body)
     return _parse_page_json(text)
+
+
+def validate_page(page: PageExtraction, context: OCRContext) -> ValidationResult:
+    valid: list[ExtractedEntry] = []
+    flagged: list[ExtractedEntry] = []
+    known = {c.lower(): c for c in context.categories}
+
+    for entry in page.entries:
+        reasons: list[str] = []
+
+        if entry.category_normalized.lower() not in known:
+            reasons.append("unknown_category")
+
+        try:
+            datetime.strptime(entry.date_normalized, "%Y-%m-%d")
+        except ValueError:
+            reasons.append("invalid_date")
+
+        try:
+            hours = float(entry.hours_normalized)
+            if hours <= 0:
+                reasons.append("invalid_hours")
+        except ValueError:
+            reasons.append("invalid_hours")
+
+        if entry.confidence < 0.5:
+            reasons.append("low_confidence")
+
+        if entry.date_raw == "?" or entry.category_raw == "?" or entry.hours_raw == "?":
+            reasons.append("unreadable_field")
+
+        if reasons:
+            entry.needs_review = True
+            entry.review_reason = "; ".join(reasons)
+            flagged.append(entry)
+        else:
+            valid.append(entry)
+
+    return ValidationResult(valid=valid, flagged=flagged)
