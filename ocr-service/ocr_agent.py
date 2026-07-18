@@ -9,6 +9,7 @@ import os
 from datetime import datetime
 from typing import Optional
 
+from botocore.exceptions import ClientError
 from PIL import Image, ImageOps
 from pydantic import BaseModel, Field, ValidationError
 
@@ -93,8 +94,14 @@ def prepare_image_for_bedrock(path: str, max_dim: int | None = None) -> str:
         raise OCRParseError(f"failed to prepare image {path!r}: {e}") from e
 
 
+def _sanitize_category(name: str) -> str:
+    # Keep printable characters, collapse whitespace, and cap length.
+    cleaned = "".join(ch for ch in name.strip() if ch.isprintable())
+    return cleaned[:64]
+
+
 def _category_list(context: OCRContext) -> str:
-    return "\n".join(f"- {c}" for c in context.categories)
+    return "\n".join(f"- {_sanitize_category(c)}" for c in context.categories)
 
 
 def build_extraction_prompt(context: OCRContext) -> str:
@@ -125,8 +132,9 @@ def build_correction_prompt(context: OCRContext, flagged: list[ExtractedEntry]) 
     entries_json = json.dumps([e.model_dump() for e in flagged], indent=2)
     return (
         "The following entries from a handwritten timesheet failed validation. "
-        "Return a complete JSON page with ALL entries, correcting only the flagged ones. "
-        "Keep valid entries unchanged. Use this schema:\n"
+        "Return a JSON page with ONLY the corrected versions of these flagged entries. "
+        "Do not include entries that are already correct. "
+        "Use this schema:\n"
         '{"entries": [{"date_raw": "...", "date_normalized": "YYYY-MM-DD", '
         '"category_raw": "...", "category_normalized": "<exact allowed category>", '
         '"hours_raw": "...", "hours_normalized": "<positive number>", '
@@ -150,10 +158,19 @@ def _strip_markdown_fences(text: str) -> str:
     return text
 
 
-def _invoke_bedrock_json(client, model: str, body: str) -> dict:
-    resp = client.invoke_model(modelId=model, body=body)
-    result = json.loads(resp["body"].read())
-    return result["choices"][0]["message"]["content"]
+def _invoke_bedrock_json(client, model: str, body: str) -> str:
+    try:
+        resp = client.invoke_model(modelId=model, body=body)
+    except ClientError as e:
+        raise OCRParseError(f"Bedrock invoke failed: {e}") from e
+    try:
+        result = json.loads(resp["body"].read())
+    except json.JSONDecodeError as e:
+        raise OCRParseError(f"Bedrock response is not valid JSON: {e}") from e
+    try:
+        return result["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as e:
+        raise OCRParseError(f"Bedrock response has unexpected shape: {e}") from e
 
 
 def _parse_page_json(text: str) -> PageExtraction:
@@ -168,16 +185,14 @@ def _parse_page_json(text: str) -> PageExtraction:
         raise OCRParseError(f"response JSON does not match schema: {e}") from e
 
 
-def extract_page(image_path: str, context: OCRContext, client, model: str) -> PageExtraction:
-    b64 = prepare_image_for_bedrock(image_path)
-    prompt = build_extraction_prompt(context)
-    body = json.dumps(
+def _build_bedrock_body(image_b64: str, prompt: str) -> str:
+    return json.dumps(
         {
             "messages": [
                 {
                     "role": "user",
                     "content": [
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
                         {"type": "text", "text": prompt},
                     ],
                 }
@@ -186,6 +201,12 @@ def extract_page(image_path: str, context: OCRContext, client, model: str) -> Pa
             "temperature": 0.1,
         }
     )
+
+
+def extract_page(image_path: str, context: OCRContext, client, model: str) -> PageExtraction:
+    b64 = prepare_image_for_bedrock(image_path)
+    prompt = build_extraction_prompt(context)
+    body = _build_bedrock_body(b64, prompt)
     text = _invoke_bedrock_json(client, model, body)
     return _parse_page_json(text)
 
@@ -195,20 +216,6 @@ def correct_entries(
 ) -> PageExtraction:
     b64 = prepare_image_for_bedrock(image_path)
     prompt = build_correction_prompt(context, flagged)
-    body = json.dumps(
-        {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-                        {"type": "text", "text": prompt},
-                    ],
-                }
-            ],
-            "max_tokens": 2048,
-            "temperature": 0.1,
-        }
-    )
+    body = _build_bedrock_body(b64, prompt)
     text = _invoke_bedrock_json(client, model, body)
     return _parse_page_json(text)

@@ -342,8 +342,14 @@ git add ocr-service/ocr_agent.py
 import json
 
 
+def _sanitize_category(name: str) -> str:
+    # Keep printable characters, collapse whitespace, and cap length.
+    cleaned = "".join(ch for ch in name.strip() if ch.isprintable())
+    return cleaned[:64]
+
+
 def _category_list(context: OCRContext) -> str:
-    return "\n".join(f"- {c}" for c in context.categories)
+    return "\n".join(f"- {_sanitize_category(c)}" for c in context.categories)
 
 
 def build_extraction_prompt(context: OCRContext) -> str:
@@ -374,8 +380,9 @@ def build_correction_prompt(context: OCRContext, flagged: list[ExtractedEntry]) 
     entries_json = json.dumps([e.model_dump() for e in flagged], indent=2)
     return (
         "The following entries from a handwritten timesheet failed validation. "
-        "Return a complete JSON page with ALL entries, correcting only the flagged ones. "
-        "Keep valid entries unchanged. Use this schema:\n"
+        "Return a JSON page with ONLY the corrected versions of these flagged entries. "
+        "Do not include entries that are already correct. "
+        "Use this schema:\n"
         '{"entries": [{"date_raw": "...", "date_normalized": "YYYY-MM-DD", '
         '"category_raw": "...", "category_normalized": "<exact allowed category>", '
         '"hours_raw": "...", "hours_normalized": "<positive number>", '
@@ -387,10 +394,17 @@ def build_correction_prompt(context: OCRContext, flagged: list[ExtractedEntry]) 
     )
 ```
 
-- [ ] **Step 2: Add Bedrock JSON parsing helper**
+- [ ] **Step 2: Add Bedrock JSON parsing helper and shared body builder**
 
 ```python
+from botocore.exceptions import ClientError
 from pydantic import ValidationError
+
+
+def _sanitize_category(name: str) -> str:
+    # Keep printable characters, collapse whitespace, and cap length.
+    cleaned = "".join(ch for ch in name.strip() if ch.isprintable())
+    return cleaned[:64]
 
 
 def _strip_markdown_fences(text: str) -> str:
@@ -405,10 +419,19 @@ def _strip_markdown_fences(text: str) -> str:
     return text
 
 
-def _invoke_bedrock_json(client, model: str, body: str) -> dict:
-    resp = client.invoke_model(modelId=model, body=body)
-    result = json.loads(resp["body"].read())
-    return result["choices"][0]["message"]["content"]
+def _invoke_bedrock_json(client, model: str, body: str) -> str:
+    try:
+        resp = client.invoke_model(modelId=model, body=body)
+    except ClientError as e:
+        raise OCRParseError(f"Bedrock invoke failed: {e}") from e
+    try:
+        result = json.loads(resp["body"].read())
+    except json.JSONDecodeError as e:
+        raise OCRParseError(f"Bedrock response is not valid JSON: {e}") from e
+    try:
+        return result["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as e:
+        raise OCRParseError(f"Bedrock response has unexpected shape: {e}") from e
 
 
 def _parse_page_json(text: str) -> PageExtraction:
@@ -421,6 +444,24 @@ def _parse_page_json(text: str) -> PageExtraction:
         return PageExtraction.model_validate(data)
     except ValidationError as e:
         raise OCRParseError(f"response JSON does not match schema: {e}") from e
+
+
+def _build_bedrock_body(image_b64: str, prompt: str) -> str:
+    return json.dumps(
+        {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ],
+            "max_tokens": 2048,
+            "temperature": 0.1,
+        }
+    )
 ```
 
 - [ ] **Step 3: Add `extract_page` and `correct_entries`**
@@ -430,21 +471,7 @@ def _parse_page_json(text: str) -> PageExtraction:
 def extract_page(image_path: str, context: OCRContext, client, model: str) -> PageExtraction:
     b64 = prepare_image_for_bedrock(image_path)
     prompt = build_extraction_prompt(context)
-    body = json.dumps(
-        {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-                        {"type": "text", "text": prompt},
-                    ],
-                }
-            ],
-            "max_tokens": 2048,
-            "temperature": 0.1,
-        }
-    )
+    body = _build_bedrock_body(b64, prompt)
     text = _invoke_bedrock_json(client, model, body)
     return _parse_page_json(text)
 
@@ -454,21 +481,7 @@ def correct_entries(
 ) -> PageExtraction:
     b64 = prepare_image_for_bedrock(image_path)
     prompt = build_correction_prompt(context, flagged)
-    body = json.dumps(
-        {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-                        {"type": "text", "text": prompt},
-                    ],
-                }
-            ],
-            "max_tokens": 2048,
-            "temperature": 0.1,
-        }
-    )
+    body = _build_bedrock_body(b64, prompt)
     text = _invoke_bedrock_json(client, model, body)
     return _parse_page_json(text)
 ```
@@ -491,7 +504,7 @@ page = ocr_agent.extract_page("/dev/null", ctx, FakeClient(), "test")
 print(page)
 ```
 
-(Note: `extract_page` will fail on `/dev/null`, but it will fail at image open, proving the prompt/body path is wired.)
+(Expected: `extract_page` raises `OCRParseError` at image preparation, proving the prompt/body path is wired and `_invoke_bedrock_json` validation no longer fails before image open.)
 
 - [ ] **Step 5: Commit**
 
@@ -627,11 +640,19 @@ def run_extraction_loop(
                 all_entries.extend(result.flagged)
             else:
                 try:
-                    page = correct_entries(path, result.flagged, page_context, client, model)
+                    corrected = correct_entries(path, result.flagged, page_context, client, model)
                 except OCRParseError:
                     all_entries.extend(result.valid)
                     for entry in result.flagged:
                         entry.review_reason = (entry.review_reason or "") + "; parser_error"
+                        all_entries.append(entry)
+                    break
+                if len(corrected.entries) == len(result.flagged):
+                    page = PageExtraction(entries=result.valid + corrected.entries)
+                else:
+                    all_entries.extend(result.valid)
+                    for entry in result.flagged:
+                        entry.review_reason = (entry.review_reason or "") + "; correction_mismatch"
                         all_entries.append(entry)
                     break
 
