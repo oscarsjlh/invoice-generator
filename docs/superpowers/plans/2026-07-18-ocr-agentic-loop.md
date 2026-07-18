@@ -16,7 +16,7 @@
 - `ocr-service/ocr_agent.py` — new module: models, image prep, prompts, extraction, validation, correction, loop.
 - `ocr-service/main.py` — integrate the agent loop; keep legacy fallback.
 - `ocr-service/test_main.py` — unit tests for the agent loop.
-- `invoice-service/migrations/004_ocr_review_reason.sql` — add `review_reason` column.
+- `invoice-service/migrations/009_ocr_review_reason.sql` — add `review_reason` column.
 - `invoice-service/internal/db/models.go` — add `ReviewReason` to `OCRDraftEntry`.
 - `invoice-service/internal/db/ocr.go` — update insert/select SQL to include `review_reason`.
 - `invoice-service/internal/ocr/contract.go` — add `ReviewReason` to `OCRExtractedEntry`.
@@ -61,7 +61,7 @@ git add ocr-service/pyproject.toml
 ## Task 2: Add the `review_reason` database column
 
 **Files:**
-- Create: `invoice-service/migrations/004_ocr_review_reason.sql`
+- Create: `invoice-service/migrations/009_ocr_review_reason.sql`
 
 - [ ] **Step 1: Create migration file**
 
@@ -78,7 +78,7 @@ Expected: all DB tests pass.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add invoice-service/migrations/004_ocr_review_reason.sql
+git add invoice-service/migrations/009_ocr_review_reason.sql
 ```
 
 ---
