@@ -2,6 +2,13 @@
 
 {{define "content"}}
 <script>document.body.classList.add('review-page');</script>
+<script>
+  document.body.addEventListener('htmx:responseError', function(evt) {
+    const xhr = evt.detail.xhr;
+    console.error('HTMX request failed:', xhr.status, xhr.responseText);
+    alert('Request failed: ' + (xhr.responseText || xhr.statusText));
+  });
+</script>
 
 <header class="review-header">
   <div>
@@ -92,7 +99,14 @@
             </td>
             <td class="actions-cell">
               {{if not .Confirmed}}
-              <button type="button" class="secondary contrast" hx-post="/ocr/import/{{$.Session.ID}}/drafts/{{.ID}}/delete" hx-target="closest tr" hx-swap="delete" hx-confirm="Delete this draft?">Delete</button>
+              <button type="button" class="secondary contrast"
+                hx-post="/ocr/import/{{$.Session.ID}}/drafts/{{.ID}}/delete"
+                hx-target="closest tr"
+                hx-swap="delete"
+                hx-confirm="Delete this draft?"
+                hx-include="[name='csrf_token']">
+                Delete
+              </button>
               {{else}}
               <small class="muted">Saved</small>
               {{end}}
