@@ -11,7 +11,10 @@ from typing import Optional
 
 from botocore.exceptions import ClientError
 from PIL import Image, ImageOps
+from pillow_heif import register_heif_opener
 from pydantic import BaseModel, Field, ValidationError
+
+register_heif_opener()
 
 
 class OCRParseError(Exception):
