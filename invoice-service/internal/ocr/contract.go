@@ -41,10 +41,11 @@ type OCRExtractedField struct {
 }
 
 type OCRExtractedEntry struct {
-	Date     OCRExtractedField `json:"date"`
-	Category OCRExtractedField `json:"category"`
-	Hours    OCRExtractedField `json:"hours"`
-	Notes    OCRExtractedField `json:"notes"`
+	Date         OCRExtractedField `json:"date"`
+	Category     OCRExtractedField `json:"category"`
+	Hours        OCRExtractedField `json:"hours"`
+	Notes        OCRExtractedField `json:"notes"`
+	ReviewReason string            `json:"review_reason"`
 }
 
 type OCRResponse struct {
