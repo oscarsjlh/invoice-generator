@@ -8,9 +8,10 @@ Endpoints:
     POST /ocr/extract  - Accept multipart form with images + JSON request body
 
 Environment variables:
-    OCR_LISTEN          - Bind address (default: :8000)
-    BEDROCK_REGION      - AWS region (default: us-east-1)
-    BEDROCK_MODEL       - Model ID (default: us.anthropic.claude-3-5-haiku-20241022-v1:0)
+    OCR_LISTEN                - Bind address (default: :8000)
+    OCR_MAX_IMAGE_DIMENSION   - Maximum width/height in pixels before resizing (default: 2048)
+    BEDROCK_REGION            - AWS region (default: us-east-1)
+    BEDROCK_MODEL             - Model ID (default: us.anthropic.claude-3-5-haiku-20241022-v1:0)
 """
 
 import base64
@@ -55,6 +56,18 @@ def prepare_image_for_bedrock(path):
     img = Image.open(path)
     if img.mode in ("RGBA", "LA", "P"):
         img = img.convert("RGB")
+
+    max_dim = int(os.environ.get("OCR_MAX_IMAGE_DIMENSION", "2048"))
+    w, h = img.size
+    if w > max_dim or h > max_dim:
+        if w > h:
+            new_w = max_dim
+            new_h = int(round(h * max_dim / w))
+        else:
+            new_h = max_dim
+            new_w = int(round(w * max_dim / h))
+        img = img.resize((new_w, new_h), Image.LANCZOS)
+
     w, h = img.size
     align = 32
     new_w = ((w + align - 1) // align) * align
@@ -258,6 +271,7 @@ class BedrockBackend:
             span.set_attribute("gen_ai.system", "aws.bedrock")
             span.set_attribute("gen_ai.request.model", self.model)
             span.set_attribute("aws.region", self.region)
+            span.set_attribute("ocr.request_body_bytes", len(body))
             start = time.time()
             resp = self.client.invoke_model(
                 modelId=self.model,

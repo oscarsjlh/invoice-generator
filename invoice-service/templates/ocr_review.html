@@ -31,7 +31,7 @@
   {{if .Drafts}}
   <form method="post" action="/ocr/import/{{.Session.ID}}/confirm">
     <input type="hidden" name="csrf_token" value="">
-    <figure>
+    <figure class="review-table">
       <table>
         <thead>
           <tr>
@@ -84,7 +84,7 @@
             </td>
             <td>
               {{if not .Confirmed}}
-              <button type="submit" class="secondary contrast" formaction="/ocr/import/{{$.Session.ID}}/drafts/{{.ID}}/delete" formmethod="post" formnovalidate>Delete</button>
+              <button type="button" class="secondary contrast" hx-post="/ocr/import/{{$.Session.ID}}/drafts/{{.ID}}/delete" hx-target="closest tr" hx-swap="delete" hx-confirm="Delete this draft?">Delete</button>
               {{else}}
               <small class="muted">Saved</small>
               {{end}}
