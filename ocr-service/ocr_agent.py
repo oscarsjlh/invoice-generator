@@ -222,6 +222,18 @@ def correct_entries(
 
 
 def validate_page(page: PageExtraction, context: OCRContext) -> ValidationResult:
+    """Classify extracted entries as valid or flagged.
+
+    Each entry is checked against the provided context: the normalized category
+    must be known, the normalized date must parse as YYYY-MM-DD, hours must be a
+    positive number, confidence must be at least 0.5, and no raw field may be a
+    literal "?" marker. Flagged entries are mutated in place; their
+    ``needs_review`` field is set to ``True`` and ``review_reason`` is set to a
+    semicolon-separated list of failure reasons.
+
+    This function is intended to be called by the agentic extraction loop after a
+    page has been extracted and before any correction/refinement round.
+    """
     valid: list[ExtractedEntry] = []
     flagged: list[ExtractedEntry] = []
     known = {c.lower(): c for c in context.categories}
