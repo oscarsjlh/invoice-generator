@@ -47,6 +47,8 @@ tracer = trace.get_tracer("invoice-app/ocr-service")
 
 
 def _agent_enabled() -> bool:
+    # The agentic loop is the intended default path. Set OCR_AGENT_ENABLED=false to fall back
+    # to the single-shot legacy extraction.
     return os.environ.get("OCR_AGENT_ENABLED", "true").lower() in ("1", "true", "yes")
 
 
@@ -313,7 +315,7 @@ class BedrockBackend:
         session_id = request_data.get("session_id", 0)
         categories = request_data.get("hints", {}).get("categories", [])
         current_year = request_data.get("current_year") or datetime.now().year
-        rate_dicts = request_data.get("rates", [])
+        rate_dicts = request_data.get("rates") or []
 
         context = ocr_agent.OCRContext(
             categories=categories,
@@ -321,9 +323,11 @@ class BedrockBackend:
             current_year=current_year,
         )
 
+        start = time.time()
         entries, meta = ocr_agent.run_extraction_loop(
             image_paths, context, self.client, self.model
         )
+        elapsed_ms = int((time.time() - start) * 1000)
 
         result_entries = []
         for e in entries:
@@ -353,7 +357,7 @@ class BedrockBackend:
                         "confidence": 0.7,
                         "needs_review": e.needs_review,
                     },
-                    "review_reason": e.review_reason,
+                    "review_reason": e.review_reason or "",
                 }
             )
 
@@ -367,7 +371,7 @@ class BedrockBackend:
             "entries": result_entries,
             "metadata": {
                 "model_used": self.model,
-                "processing_time_ms": 0,
+                "processing_time_ms": elapsed_ms,
                 "pages_processed": meta["pages"],
                 "input_tokens": 0,
                 "output_tokens": 0,
