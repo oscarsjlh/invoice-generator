@@ -81,6 +81,7 @@
               {{else if ge .Confidence 0.5}}<mark>{{printf "%.0f%%" (mul .Confidence 100)}}</mark>
               {{else}}<mark class="contrast">{{printf "%.0f%%" (mul .Confidence 100)}}</mark>{{end}}
               {{if .NeedsReview}}<br><small class="muted">needs review</small>{{end}}
+              {{if .ReviewReason}}<br><small class="muted">{{.ReviewReason}}</small>{{end}}
             </td>
             <td>
               {{if not .Confirmed}}
