@@ -197,6 +197,57 @@ func TestOCRDeleteDraftHandlerRemovesDraftFromSession(t *testing.T) {
 	assert.Equal(t, drafts[1].ID, remaining[0].ID)
 }
 
+func TestOCRDeleteDraftHandlerRefreshesCountForHTMX(t *testing.T) {
+	t.Parallel()
+	ta := newTestAppWithAuth(t)
+	ta.app.cfg.OCREnabled = true
+	ta.oh = NewOCRHandlers(ta.app.renderer, ta.app.ocrJobs, ta.app.cfg)
+
+	store := ta.store
+	sessionID, err := store.CreateOCRSession()
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateOCRSessionState(sessionID, "review_ready", ""))
+	require.NoError(t, store.SaveDraftEntries(sessionID, []db.OCRDraftEntry{
+		{
+			DateNormalized:     "2026-05-24",
+			CategoryNormalized: "Consulting",
+			HoursNormalized:    2,
+			Confidence:         0.8,
+		},
+		{
+			DateNormalized:     "2026-05-25",
+			CategoryNormalized: "Admin",
+			HoursNormalized:    1,
+			Confidence:         0.7,
+		},
+	}))
+	drafts, err := store.GetDraftEntries(sessionID)
+	require.NoError(t, err)
+	require.Len(t, drafts, 2)
+
+	idStr := strconv.FormatInt(sessionID, 10)
+	draftIDStr := strconv.FormatInt(drafts[0].ID, 10)
+	req := httptest.NewRequest("POST", "/ocr/import/"+idStr+"/drafts/"+draftIDStr+"/delete", nil)
+	req.Header.Set("HX-Request", "true")
+	req.SetPathValue("id", idStr)
+	req.SetPathValue("draftID", draftIDStr)
+	req = req.WithContext(WithTestStore(req.Context(), ta.store))
+	w := httptest.NewRecorder()
+
+	ta.oh.ocrDeleteDraft(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Result().StatusCode)
+	body, err := io.ReadAll(w.Result().Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `id="draft-count"`)
+	assert.Contains(t, string(body), `hx-swap-oob="true"`)
+	assert.Contains(t, string(body), `1 entries found`)
+	remaining, err := store.GetDraftEntries(sessionID)
+	require.NoError(t, err)
+	require.Len(t, remaining, 1)
+	assert.Equal(t, drafts[1].ID, remaining[0].ID)
+}
+
 func TestOCRDeleteSessionHandler(t *testing.T) {
 	t.Parallel()
 	ta := newTestAppWithAuth(t)

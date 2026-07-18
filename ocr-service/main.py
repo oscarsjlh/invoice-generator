@@ -8,9 +8,11 @@ Endpoints:
     POST /ocr/extract  - Accept multipart form with images + JSON request body
 
 Environment variables:
-    OCR_LISTEN          - Bind address (default: :8000)
-    BEDROCK_REGION      - AWS region (default: us-east-1)
-    BEDROCK_MODEL       - Model ID (default: us.anthropic.claude-3-5-haiku-20241022-v1:0)
+    OCR_LISTEN                - Bind address (default: :8000)
+    OCR_MAX_IMAGE_DIMENSION   - Maximum width/height in pixels before resizing (default: 2048)
+    OCR_AGENT_ENABLED         - Use the agentic extraction loop (default: true)
+    BEDROCK_REGION            - AWS region (default: us-east-1)
+    BEDROCK_MODEL             - Model ID (default: us.anthropic.claude-3-5-haiku-20241022-v1:0)
 """
 
 import base64
@@ -40,7 +42,15 @@ try:
 except ImportError:
     pass
 
+import ocr_agent
+
 tracer = trace.get_tracer("invoice-app/ocr-service")
+
+
+def _agent_enabled() -> bool:
+    # The agentic loop is the intended default path. Set OCR_AGENT_ENABLED=false to fall back
+    # to the single-shot legacy extraction.
+    return os.environ.get("OCR_AGENT_ENABLED", "true").lower() in ("1", "true", "yes")
 
 
 def setup_tracing():
@@ -55,6 +65,18 @@ def prepare_image_for_bedrock(path):
     img = Image.open(path)
     if img.mode in ("RGBA", "LA", "P"):
         img = img.convert("RGB")
+
+    max_dim = int(os.environ.get("OCR_MAX_IMAGE_DIMENSION", "2048"))
+    w, h = img.size
+    if w > max_dim or h > max_dim:
+        if w > h:
+            new_w = max_dim
+            new_h = int(round(h * max_dim / w))
+        else:
+            new_h = max_dim
+            new_w = int(round(w * max_dim / h))
+        img = img.resize((new_w, new_h), Image.LANCZOS)
+
     w, h = img.size
     align = 32
     new_w = ((w + align - 1) // align) * align
@@ -216,7 +238,7 @@ class BedrockBackend:
             aws_secret_access_key=secret_key,
         )
 
-    def extract(self, image_paths, request_data):
+    def _legacy_extract(self, image_paths, request_data):
         session_id = request_data.get("session_id", 0)
         categories = request_data.get("hints", {}).get("categories", [])
         current_year = request_data.get("current_year") or datetime.now().year
@@ -258,6 +280,7 @@ class BedrockBackend:
             span.set_attribute("gen_ai.system", "aws.bedrock")
             span.set_attribute("gen_ai.request.model", self.model)
             span.set_attribute("aws.region", self.region)
+            span.set_attribute("ocr.request_body_bytes", len(body))
             start = time.time()
             resp = self.client.invoke_model(
                 modelId=self.model,
@@ -288,6 +311,79 @@ class BedrockBackend:
                 / max(len(entries), 1),
             },
         }
+
+    def _agent_extract(self, image_paths, request_data):
+        session_id = request_data.get("session_id", 0)
+        categories = request_data.get("hints", {}).get("categories", [])
+        current_year = request_data.get("current_year") or datetime.now().year
+        rate_dicts = request_data.get("rates") or []
+
+        context = ocr_agent.OCRContext(
+            categories=categories,
+            rates=[ocr_agent.RateHint(**r) for r in rate_dicts],
+            current_year=current_year,
+        )
+
+        start = time.time()
+        entries, meta = ocr_agent.run_extraction_loop(
+            image_paths, context, self.client, self.model
+        )
+        elapsed_ms = int((time.time() - start) * 1000)
+
+        result_entries = []
+        for e in entries:
+            result_entries.append(
+                {
+                    "date": {
+                        "raw": e.date_raw,
+                        "normalized": e.date_normalized,
+                        "confidence": 0.85,
+                        "needs_review": e.needs_review,
+                    },
+                    "category": {
+                        "raw": e.category_raw,
+                        "normalized": e.category_normalized,
+                        "confidence": e.confidence,
+                        "needs_review": e.needs_review,
+                    },
+                    "hours": {
+                        "raw": e.hours_raw,
+                        "normalized": e.hours_normalized,
+                        "confidence": 0.9,
+                        "needs_review": e.needs_review,
+                    },
+                    "notes": {
+                        "raw": e.notes_raw,
+                        "normalized": e.notes_normalized,
+                        "confidence": 0.7,
+                        "needs_review": e.needs_review,
+                    },
+                    "review_reason": e.review_reason or "",
+                }
+            )
+
+        avg_confidence = 0.0
+        if result_entries:
+            avg_confidence = sum(e["category"]["confidence"] for e in result_entries) / len(result_entries)
+
+        return {
+            "session_id": session_id,
+            "status": "success",
+            "entries": result_entries,
+            "metadata": {
+                "model_used": self.model,
+                "processing_time_ms": elapsed_ms,
+                "pages_processed": meta["pages"],
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "avg_confidence": avg_confidence,
+            },
+        }
+
+    def extract(self, image_paths, request_data):
+        if not _agent_enabled():
+            return self._legacy_extract(image_paths, request_data)
+        return self._agent_extract(image_paths, request_data)
 
 
 class OCRHandler(BaseHTTPRequestHandler):

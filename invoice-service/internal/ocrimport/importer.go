@@ -324,6 +324,7 @@ func buildDraftEntries(result *ocr.OCRResponse, categories []string) []db.OCRDra
 			NotesNormalized:    strings.TrimSpace(e.Notes.Normalized),
 			Confidence:         e.Category.Confidence,
 			NeedsReview:        e.Category.NeedsReview,
+			ReviewReason:       e.ReviewReason,
 		})
 	}
 	return drafts

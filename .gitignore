@@ -278,4 +278,3 @@ __marimo__/
 /invoice-service/migrate-csv
 /invoice-service/migrate-to-user
 /invoice-service/server
-/invoice-service/static/htmx.min.js

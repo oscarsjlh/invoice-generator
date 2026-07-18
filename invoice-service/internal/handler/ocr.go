@@ -284,10 +284,24 @@ func (h *OCRHandlers) ocrDeleteDraft(w http.ResponseWriter, r *http.Request) {
 	importer := h.ocrImporter(store)
 	if err := importer.DeleteDraft(r.Context(), sessionID, draftID); err != nil {
 		LoggerFromContext(r.Context()).Warn("delete ocr draft", "session_id", sessionID, "draft_id", draftID, "error", err)
+		if isHTMX(r) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		redirect(w, r, fmt.Sprintf("/ocr/import/%d", sessionID), err.Error())
 		return
 	}
 
+	if isHTMX(r) {
+		drafts, err := store.GetDraftEntries(sessionID)
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<p id="draft-count" class="muted" hx-swap-oob="true">%d entries found</p>`, len(drafts))
+		return
+	}
 	redirect(w, r, fmt.Sprintf("/ocr/import/%d", sessionID), "Draft entry deleted")
 }
 

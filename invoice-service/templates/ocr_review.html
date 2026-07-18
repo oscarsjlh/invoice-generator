@@ -1,18 +1,29 @@
 {{define "title"}}Review {{.Session.State}}{{end}}
 
 {{define "content"}}
-<header>
-  <h1>Import Session #{{.Session.ID}}</h1>
-  <p class="muted">
-    Status:
-    {{if eq .Session.State "uploaded"}}Waiting for processing
-    {{else if eq .Session.State "processing"}}Processing images...
-    {{else if eq .Session.State "review_ready"}}Review extracted entries below
-    {{else if eq .Session.State "failed"}}<strong>Failed:</strong> {{.Session.ErrorMsg}}
-    {{else if eq .Session.State "confirmed"}}All entries confirmed
-    {{else if eq .Session.State "confirmed_part"}}Some entries confirmed
-    {{else}}{{.Session.State}}{{end}}
-  </p>
+<script>document.body.classList.add('review-page');</script>
+<script>
+  document.body.addEventListener('htmx:responseError', function(evt) {
+    const xhr = evt.detail.xhr;
+    console.error('HTMX request failed:', xhr.status, xhr.responseText);
+    alert('Request failed: ' + (xhr.responseText || xhr.statusText));
+  });
+</script>
+
+<header class="review-header">
+  <div>
+    <h1>Import Session #{{.Session.ID}}</h1>
+    <p class="muted">
+      Status:
+      {{if eq .Session.State "uploaded"}}Waiting for processing
+      {{else if eq .Session.State "processing"}}Processing images…
+      {{else if eq .Session.State "review_ready"}}<span class="status-badge ready">Review extracted entries below</span>
+      {{else if eq .Session.State "failed"}}<span class="status-badge failed">Failed: {{.Session.ErrorMsg}}</span>
+      {{else if eq .Session.State "confirmed"}}<span class="status-badge confirmed">All entries confirmed</span>
+      {{else if eq .Session.State "confirmed_part"}}<span class="status-badge partial">Some entries confirmed</span>
+      {{else}}{{.Session.State}}{{end}}
+    </p>
+  </div>
 </header>
 
 {{if .Notice}}
@@ -26,38 +37,41 @@
 {{end}}
 
 {{if eq .Session.State "review_ready" "confirmed_part"}}
-<section>
-  <h2>Extracted Entries</h2>
+<section class="ocr-review-section">
+  <div class="review-board-header">
+    <h2>Extracted Entries</h2>
+    <p id="draft-count" class="muted">{{len .Drafts}} entries found</p>
+  </div>
   {{if .Drafts}}
   <form method="post" action="/ocr/import/{{.Session.ID}}/confirm">
     <input type="hidden" name="csrf_token" value="">
-    <figure>
+    <div class="review-board">
       <table>
         <thead>
           <tr>
-            <th>Confirm</th>
+            <th class="confirm-col">Confirm</th>
             <th>Date</th>
             <th>Category</th>
-            <th>Hours</th>
+            <th class="hours-col">Hours</th>
             <th>Notes</th>
-            <th>Confidence</th>
-            <th>Actions</th>
+            <th class="confidence-col">Confidence</th>
+            <th class="actions-col">Actions</th>
           </tr>
         </thead>
         <tbody>
           {{range .Drafts}}
           {{$d := .}}
-          <tr{{if .NeedsReview}} style="background: var(--warning-bg);"{{end}}>
-            <td>
+          <tr{{if .NeedsReview}} class="needs-review"{{end}}>
+            <td class="confirm-cell">
               {{if not .Confirmed}}
               <input type="checkbox" name="draft_{{.ID}}" checked>
               {{else}}
-              <ins>Saved</ins>
+              <span class="saved-badge">Saved</span>
               {{end}}
             </td>
             <td>
               <input type="date" name="date_{{.ID}}" value="{{.DateNormalized}}" size="12">
-              {{if .DateRaw}}<br><small class="muted">raw: {{.DateRaw}}</small>{{end}}
+              {{if .DateRaw}}<small class="raw">raw: {{.DateRaw}}</small>{{end}}
             </td>
             <td>
               <select name="cat_{{.ID}}">
@@ -66,25 +80,33 @@
                 <option value="{{.}}"{{if eq . $d.CategoryNormalized}} selected{{end}}>{{.}}</option>
                 {{end}}
               </select>
-              {{if .CategoryRaw}}<br><small class="muted">raw: {{.CategoryRaw}}</small>{{end}}
+              {{if .CategoryRaw}}<small class="raw">raw: {{.CategoryRaw}}</small>{{end}}
             </td>
-            <td>
+            <td class="hours-cell">
               <input type="text" name="hrs_{{.ID}}" value="{{if gt .HoursNormalized 0.0}}{{money .HoursNormalized}}{{else}}{{.HoursRaw}}{{end}}" size="5">
-              {{if .HoursRaw}}<br><small class="muted">raw: {{.HoursRaw}}</small>{{end}}
+              {{if .HoursRaw}}<small class="raw">raw: {{.HoursRaw}}</small>{{end}}
             </td>
             <td>
               <input type="text" name="notes_{{.ID}}" value="{{.NotesNormalized}}" size="20">
-              {{if .NotesRaw}}<br><small class="muted">raw: {{.NotesRaw}}</small>{{end}}
+              {{if .NotesRaw}}<small class="raw">raw: {{.NotesRaw}}</small>{{end}}
             </td>
-            <td>
-              {{if ge .Confidence 0.8}}<ins>{{printf "%.0f%%" (mul .Confidence 100)}}</ins>
-              {{else if ge .Confidence 0.5}}<mark>{{printf "%.0f%%" (mul .Confidence 100)}}</mark>
-              {{else}}<mark class="contrast">{{printf "%.0f%%" (mul .Confidence 100)}}</mark>{{end}}
-              {{if .NeedsReview}}<br><small class="muted">needs review</small>{{end}}
+            <td class="confidence-cell">
+              {{if ge .Confidence 0.8}}<span class="confidence-badge high">{{printf "%.0f%%" (mul .Confidence 100)}}</span>
+              {{else if ge .Confidence 0.5}}<span class="confidence-badge medium">{{printf "%.0f%%" (mul .Confidence 100)}}</span>
+              {{else}}<span class="confidence-badge low">{{printf "%.0f%%" (mul .Confidence 100)}}</span>{{end}}
+              {{if .NeedsReview}}<span class="review-badge">needs review</span>{{end}}
+              {{if .ReviewReason}}<span class="reason-text">{{.ReviewReason}}</span>{{end}}
             </td>
-            <td>
+            <td class="actions-cell">
               {{if not .Confirmed}}
-              <button type="submit" class="secondary contrast" formaction="/ocr/import/{{$.Session.ID}}/drafts/{{.ID}}/delete" formmethod="post" formnovalidate>Delete</button>
+              <button type="button" class="secondary contrast"
+                hx-post="/ocr/import/{{$.Session.ID}}/drafts/{{.ID}}/delete"
+                hx-target="closest tr"
+                hx-swap="delete"
+                hx-confirm="Delete this draft?"
+                hx-include="[name='csrf_token']">
+                Delete
+              </button>
               {{else}}
               <small class="muted">Saved</small>
               {{end}}
@@ -93,9 +115,9 @@
           {{end}}
         </tbody>
       </table>
-    </figure>
+    </div>
 
-    <div style="display: flex; gap: 0.75rem; align-items: center;">
+    <div class="review-actions">
       <button type="submit">Confirm Selected Entries</button>
       <button type="button" class="secondary" onclick="window.location.href='/entries'">Back to Entries</button>
       <button type="submit" class="secondary contrast" formaction="/ocr/import/{{.Session.ID}}/delete" formmethod="post">Delete Session</button>
@@ -106,33 +128,33 @@
   {{end}}
 </section>
 {{else if eq .Session.State "processing"}}
-<section>
-  <article>
-    <h2>Processing...</h2>
+<section class="ocr-review-section">
+  <article class="review-state-card">
+    <h2>Processing…</h2>
     <progress></progress>
     <p class="muted">OCR is analyzing {{len .Images}} image(s). This page will update automatically.</p>
     <meta http-equiv="refresh" content="5">
   </article>
 </section>
 {{else if eq .Session.State "uploaded"}}
-<section>
-  <article>
+<section class="ocr-review-section">
+  <article class="review-state-card">
     <h2>Waiting for processing</h2>
     <p class="muted">{{len .Images}} image(s) uploaded. If no OCR service is configured, start processing manually or refresh.</p>
     <meta http-equiv="refresh" content="5">
   </article>
 </section>
 {{else if eq .Session.State "confirmed"}}
-<section>
-  <article>
+<section class="ocr-review-section">
+  <article class="review-state-card">
     <h2>All entries confirmed</h2>
     <p>{{len .Drafts}} entries were saved to your entries list.</p>
     <a role="button" href="/entries">View Entries</a>
   </article>
 </section>
 {{else if eq .Session.State "failed"}}
-<section>
-  <article>
+<section class="ocr-review-section">
+  <article class="review-state-card failed">
     <h2>Processing Failed</h2>
     <p>The import session could not be completed. The uploaded images are preserved so you can retry.</p>
     <p class="muted">{{.Session.ErrorMsg}}</p>
@@ -141,7 +163,7 @@
 {{end}}
 
 {{if .Images}}
-<section>
+<section class="uploaded-images">
   <h2>Uploaded Images ({{len .Images}})</h2>
   <div class="grid-2">
     {{range .Images}}

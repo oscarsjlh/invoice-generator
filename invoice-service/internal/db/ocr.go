@@ -107,8 +107,8 @@ func (s *Store) SaveDraftEntries(sessionID int64, drafts []OCRDraftEntry) error 
 
 	stmt, err := tx.Prepare(`INSERT INTO ocr_draft_entries
 		(session_id, date_raw, date_normalized, category_raw, category_normalized,
-		 hours_raw, hours_normalized, notes_raw, notes_normalized, confidence, needs_review, confirmed)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`)
+		 hours_raw, hours_normalized, notes_raw, notes_normalized, confidence, needs_review, review_reason, confirmed)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`)
 	if err != nil {
 		return fmt.Errorf("prepare insert: %w", err)
 	}
@@ -123,7 +123,7 @@ func (s *Store) SaveDraftEntries(sessionID int64, drafts []OCRDraftEntry) error 
 			d.CategoryRaw, d.CategoryNormalized,
 			d.HoursRaw, d.HoursNormalized,
 			d.NotesRaw, d.NotesNormalized,
-			d.Confidence, d.NeedsReview,
+			d.Confidence, d.NeedsReview, d.ReviewReason,
 		); err != nil {
 			return fmt.Errorf("insert draft: %w", err)
 		}
@@ -135,7 +135,7 @@ func (s *Store) SaveDraftEntries(sessionID int64, drafts []OCRDraftEntry) error 
 func (s *Store) GetDraftEntries(sessionID int64) ([]OCRDraftEntry, error) {
 	rows, err := s.db.Query(
 		`SELECT id, session_id, date_raw, date_normalized, category_raw, category_normalized,
-		        hours_raw, hours_normalized, notes_raw, notes_normalized, confidence, needs_review, confirmed
+		        hours_raw, hours_normalized, notes_raw, notes_normalized, confidence, needs_review, review_reason, confirmed
 		 FROM ocr_draft_entries WHERE session_id = ? ORDER BY id`,
 		sessionID,
 	)
@@ -155,7 +155,7 @@ func (s *Store) GetDraftEntries(sessionID int64) ([]OCRDraftEntry, error) {
 			&d.CategoryRaw, &d.CategoryNormalized,
 			&d.HoursRaw, &d.HoursNormalized,
 			&d.NotesRaw, &d.NotesNormalized,
-			&d.Confidence, &d.NeedsReview, &d.Confirmed,
+			&d.Confidence, &d.NeedsReview, &d.ReviewReason, &d.Confirmed,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan draft: %w", err)
@@ -169,7 +169,7 @@ func (s *Store) GetDraftEntry(id int64) (OCRDraftEntry, error) {
 	var d OCRDraftEntry
 	err := s.db.QueryRow(
 		`SELECT id, session_id, date_raw, date_normalized, category_raw, category_normalized,
-		        hours_raw, hours_normalized, notes_raw, notes_normalized, confidence, needs_review, confirmed
+		        hours_raw, hours_normalized, notes_raw, notes_normalized, confidence, needs_review, review_reason, confirmed
 		 FROM ocr_draft_entries WHERE id = ?`, id,
 	).Scan(
 		&d.ID, &d.SessionID,
@@ -177,7 +177,7 @@ func (s *Store) GetDraftEntry(id int64) (OCRDraftEntry, error) {
 		&d.CategoryRaw, &d.CategoryNormalized,
 		&d.HoursRaw, &d.HoursNormalized,
 		&d.NotesRaw, &d.NotesNormalized,
-		&d.Confidence, &d.NeedsReview, &d.Confirmed,
+		&d.Confidence, &d.NeedsReview, &d.ReviewReason, &d.Confirmed,
 	)
 	if err != nil {
 		return OCRDraftEntry{}, fmt.Errorf("get draft entry: %w", err)

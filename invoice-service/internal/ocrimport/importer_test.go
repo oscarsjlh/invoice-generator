@@ -73,10 +73,11 @@ func (f *fakeExtractor) Extract(ctx context.Context, images []string, hints ocr.
 		Status:    "success",
 		Entries: []ocr.OCRExtractedEntry{
 			{
-				Date:     ocr.OCRExtractedField{Raw: "1/5", Normalized: "2026-05-01", Confidence: 0.8},
-				Category: ocr.OCRExtractedField{Raw: "Consulting", Normalized: "Consulting", Confidence: 0.9},
-				Hours:    ocr.OCRExtractedField{Raw: "2", Normalized: "2", Confidence: 0.9},
-				Notes:    ocr.OCRExtractedField{Raw: "page", Normalized: "page", Confidence: 0.7},
+				Date:         ocr.OCRExtractedField{Raw: "1/5", Normalized: "2026-05-01", Confidence: 0.8},
+				Category:     ocr.OCRExtractedField{Raw: "Consulting", Normalized: "Consulting", Confidence: 0.9},
+				Hours:        ocr.OCRExtractedField{Raw: "2", Normalized: "2", Confidence: 0.9},
+				Notes:        ocr.OCRExtractedField{Raw: "page", Normalized: "page", Confidence: 0.7},
+				ReviewReason: "unknown_category",
 			},
 		},
 		Metadata: ocr.OCRMetadata{ModelUsed: "test", PagesProcessed: len(images), AvgConfidence: 0.9},
@@ -111,6 +112,9 @@ func TestProcessSessionExtractsOneImagePerRequest(t *testing.T) {
 	}
 	if len(store.savedDrafts) != 2 {
 		t.Fatalf("saved draft count = %d, want 2", len(store.savedDrafts))
+	}
+	if store.savedDrafts[0].ReviewReason != "unknown_category" {
+		t.Fatalf("saved draft review reason = %q, want unknown_category", store.savedDrafts[0].ReviewReason)
 	}
 }
 

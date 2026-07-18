@@ -11,7 +11,7 @@ FROM python:3.12-slim-bookworm AS runtime
 RUN adduser --system --uid 1000 app
 
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
-COPY --chown=app:app main.py /app/
+COPY --chown=app:app main.py ocr_agent.py /app/
 
 ENV PATH="/app/.venv/bin:$PATH" \
     OCR_LISTEN=:8000
